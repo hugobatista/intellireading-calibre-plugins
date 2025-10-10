@@ -15,6 +15,22 @@ MSG_ALREADY_METAGUIDED = (
     "This ensures optimal performance on your device."
 )
 
+# Donate message for first-time users
+MSG_WELCOME = (
+    "WARNING! PLEASE READ CAREFULLY: "
+    "You have installed the 'KoboTouch Metaguide Driver' by IntelliReading.\n\n"
+    "If you do not know what metaguiding is, DO NOT USE this driver "
+    "and uninstall it immediately, as it is NOT required to send ebooks to your Kobo device. \n"
+    "This driver will modify ANY epub/kepub file you send to the device, "
+    "by adding additional markup to the text, like bold tags, eventually improving your reading experience, "
+    "your focus and reading speed. \n\n"
+    "🌐 For more information, visit https://go.hugobatista.com/gh/intellireading-calibre-plugins or "
+    "https://go.hugobatista.com/intellireading .\n\n"
+    "💙 Thank you for using IntelliReading!\n"
+    "If this plugin improves your reading experience, please consider supporting "
+    "its development through a donation: https://go.hugobatista.com/donate-intellireading ."
+)
+
 
 def metaguide_file(filepath: str) -> str:
     common.log.debug(f"Converting file to metaguiding format: {filepath}")
@@ -49,6 +65,20 @@ class KoboTouchMetaguideDriver(KOBOTOUCH):
     def initialize(self) -> None:
         common.log.debug(f"Initializing {self.name} plugin")
         super().initialize()
+
+    user_feedback_after_callback = None
+
+    @classmethod
+    def get_open_popup_message(cls):
+        from calibre.devices.interface import OpenPopupMessage
+
+        # show the donation message only once, when the device is first connected
+        return OpenPopupMessage(
+            title="KoboTouch - Metaguide Driver (intellireading)",
+            message=MSG_WELCOME,
+            level="warn",
+            skip_dialog_skip_precheck=False,
+        )
 
     def _convert_epub_to_kepub(self, input_path: str, output_path: str, metadata: Optional[Metadata] = None) -> str:
         """
