@@ -78,7 +78,9 @@ def download_file(url: str, dest: Path, description: str) -> bool:
     return True
 
 
-def handle_cli_file(filename: str, local_path: Path, url: str, common_path: Path, description: str, use_defaults: bool = False) -> bool:
+def handle_cli_file(
+    filename: str, local_path: Path, url: str, common_path: Path, description: str, use_defaults: bool = False
+) -> bool:
     """Handle downloading or copying a CLI file."""
     if use_defaults:
         # Use default behavior: download if available, otherwise skip
@@ -86,7 +88,9 @@ def handle_cli_file(filename: str, local_path: Path, url: str, common_path: Path
             print(f"Warning: Could not download {filename}. Skipping.")
             return False
     else:
-        source_choice = input(f"Download latest {filename} or copy from {local_path}? (download/copy) [download]: ").lower()
+        source_choice = input(
+            f"Download latest {filename} or copy from {local_path}? (download/copy) [download]: "
+        ).lower()
 
         if source_choice.startswith("c"):
             if local_path.is_file():

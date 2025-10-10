@@ -113,7 +113,7 @@ def get_calibre_dir(use_defaults: bool = False) -> Path:
         print(f"Using default Calibre directory: {calibre_dir}")
     else:
         # Check if we got a param with calibre directory path
-        if len(sys.argv) > 1 and not sys.argv[1].startswith('-'):
+        if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
             calibre_dir = sys.argv[1]
         else:
             # Check if we have an environment variable with calibre directory path
@@ -204,21 +204,15 @@ Examples:
   %(prog)s /opt/calibre              # Use specific Calibre directory
   %(prog)s --defaults                # Use default values without prompting
   %(prog)s --defaults /opt/calibre   # Use defaults but override Calibre directory
-        """
+        """,
     )
-    
+
+    parser.add_argument("calibre_dir", nargs="?", help=f"Path to Calibre directory (default: {DEFAULT_CALIBRE_DIR})")
+
     parser.add_argument(
-        "calibre_dir",
-        nargs="?",
-        help=f"Path to Calibre directory (default: {DEFAULT_CALIBRE_DIR})"
+        "--defaults", "-d", action="store_true", help="Run with default values without prompting for user input"
     )
-    
-    parser.add_argument(
-        "--defaults", "-d",
-        action="store_true",
-        help="Run with default values without prompting for user input"
-    )
-    
+
     return parser.parse_args()
 
 
@@ -226,7 +220,7 @@ def main() -> None:
     """Main function to manage Calibre plugins."""
     try:
         args = parse_arguments()
-        
+
         # Determine calibre directory
         if args.calibre_dir:
             # Explicit directory provided
@@ -236,7 +230,7 @@ def main() -> None:
         else:
             # Get directory using existing logic with defaults flag
             calibre_dir = get_calibre_dir(use_defaults=args.defaults)
-        
+
         print(f"Calibre directory: {calibre_dir}")
 
         if not run_copy_commonfiles(use_defaults=args.defaults):
