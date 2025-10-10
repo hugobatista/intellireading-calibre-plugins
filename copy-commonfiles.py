@@ -78,25 +78,31 @@ def download_file(url: str, dest: Path, description: str) -> bool:
     return True
 
 
-def handle_cli_file(filename: str, local_path: Path, url: str, common_path: Path, description: str) -> bool:
+def handle_cli_file(filename: str, local_path: Path, url: str, common_path: Path, description: str, use_defaults: bool = False) -> bool:
     """Handle downloading or copying a CLI file."""
-    source_choice = input(f"Download latest {filename} or copy from {local_path}? (download/copy) [download]: ").lower()
+    if use_defaults:
+        # Use default behavior: download if available, otherwise skip
+        if not download_file(url, common_path, description):
+            print(f"Warning: Could not download {filename}. Skipping.")
+            return False
+    else:
+        source_choice = input(f"Download latest {filename} or copy from {local_path}? (download/copy) [download]: ").lower()
 
-    if source_choice.startswith("c"):
-        if local_path.is_file():
-            print(f"Copying {filename} from {local_path}...")
-            if not copy_file_with_check(local_path, common_path, description):
+        if source_choice.startswith("c"):
+            if local_path.is_file():
+                print(f"Copying {filename} from {local_path}...")
+                if not copy_file_with_check(local_path, common_path, description):
+                    sys.exit(1)
+            else:
+                print(f"Error: Local file {local_path} not found. Cannot copy.")
                 sys.exit(1)
         else:
-            print(f"Error: Local file {local_path} not found. Cannot copy.")
-            sys.exit(1)
-    else:
-        if not download_file(url, common_path, description):
-            sys.exit(1)
+            if not download_file(url, common_path, description):
+                sys.exit(1)
     return True
 
 
-def copy_common_files():
+def copy_common_files(use_defaults: bool = False):
     # Copy common.py to all plugins (special case - no remote source)
     print("Copying common.py...")
     common_plugin_paths = get_plugin_paths("common.py")
@@ -115,8 +121,13 @@ def copy_common_files():
             print(f"{filename} not found.")
             update_file = True
         else:
-            update_response = input(f"Do you want to update {filename}? (yes/no) [no]: ").lower()
-            update_file = update_response.startswith("y")
+            if use_defaults:
+                # Default behavior: don't update if file exists
+                print(f"{filename} already exists. Skipping update (using defaults).")
+                update_file = False
+            else:
+                update_response = input(f"Do you want to update {filename}? (yes/no) [no]: ").lower()
+                update_file = update_response.startswith("y")
 
         if update_file:
             handle_cli_file(
@@ -125,6 +136,7 @@ def copy_common_files():
                 url=paths["url"],
                 common_path=common_path,
                 description=filename,
+                use_defaults=use_defaults,
             )
 
     # Update all CLI files
@@ -150,7 +162,9 @@ def copy_common_files():
 
 def main():
     try:
-        success = copy_common_files()
+        # Check for --defaults argument
+        use_defaults = "--defaults" in sys.argv or "-d" in sys.argv
+        success = copy_common_files(use_defaults=use_defaults)
         sys.exit(0 if success else 1)
     except KeyboardInterrupt:
         print("\nOperation cancelled by user")

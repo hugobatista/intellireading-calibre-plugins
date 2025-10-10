@@ -4,6 +4,7 @@ import os
 import sys
 import subprocess
 import ast
+import argparse
 from pathlib import Path
 from typing import List, Dict, Optional
 
@@ -104,25 +105,30 @@ def run_command(cmd: List[str], operation: str, check: bool = True) -> bool:
         return False
 
 
-def get_calibre_dir() -> Path:
+def get_calibre_dir(use_defaults: bool = False) -> Path:
     """Get the Calibre directory from args, env, or user input."""
-    # Check if we got a param with calibre directory path
-    if len(sys.argv) > 1:
-        calibre_dir = sys.argv[1]
+    if use_defaults:
+        # Use the default directory when --defaults flag is passed
+        calibre_dir = str(DEFAULT_CALIBRE_DIR)
+        print(f"Using default Calibre directory: {calibre_dir}")
     else:
-        # Check if we have an environment variable with calibre directory path
-        calibre_dir = os.environ.get("CALIBRE_DIR", "")
-        if not calibre_dir:
-            # Ask for calibre directory path, suggesting a default
-            calibre_dir = input(f"Please enter the path to the calibre directory [{DEFAULT_CALIBRE_DIR}]: ")
-            calibre_dir = calibre_dir.strip() or str(DEFAULT_CALIBRE_DIR)
+        # Check if we got a param with calibre directory path
+        if len(sys.argv) > 1 and not sys.argv[1].startswith('-'):
+            calibre_dir = sys.argv[1]
+        else:
+            # Check if we have an environment variable with calibre directory path
+            calibre_dir = os.environ.get("CALIBRE_DIR", "")
+            if not calibre_dir:
+                # Ask for calibre directory path, suggesting a default
+                calibre_dir = input(f"Please enter the path to the calibre directory [{DEFAULT_CALIBRE_DIR}]: ")
+                calibre_dir = calibre_dir.strip() or str(DEFAULT_CALIBRE_DIR)
 
     # Set environment variable for this session and sub-processes
     os.environ["CALIBRE_DIR"] = calibre_dir
     return Path(calibre_dir)
 
 
-def run_copy_commonfiles() -> bool:
+def run_copy_commonfiles(use_defaults: bool = False) -> bool:
     """Run the copy-commonfiles script functions directly."""
     if not COPY_COMMONFILES.exists():
         print(f"Warning: {COPY_COMMONFILES} not found. Skipping.")
@@ -140,8 +146,8 @@ def run_copy_commonfiles() -> bool:
         copy_commonfiles = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(copy_commonfiles)
 
-        # Call the main function
-        return copy_commonfiles.copy_common_files()
+        # Call the main function with defaults parameter
+        return copy_commonfiles.copy_common_files(use_defaults=use_defaults)
     except Exception as e:
         print(f"Error running copy-commonfiles: {e}")
         return False
@@ -187,13 +193,53 @@ def process_plugin(plugin: PluginConfig, calibre_dir: Path) -> bool:
     return True
 
 
+def parse_arguments() -> argparse.Namespace:
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Debug Calibre plugins by rebuilding and reinstalling them",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  %(prog)s                           # Interactive mode (prompts for input)
+  %(prog)s /opt/calibre              # Use specific Calibre directory
+  %(prog)s --defaults                # Use default values without prompting
+  %(prog)s --defaults /opt/calibre   # Use defaults but override Calibre directory
+        """
+    )
+    
+    parser.add_argument(
+        "calibre_dir",
+        nargs="?",
+        help=f"Path to Calibre directory (default: {DEFAULT_CALIBRE_DIR})"
+    )
+    
+    parser.add_argument(
+        "--defaults", "-d",
+        action="store_true",
+        help="Run with default values without prompting for user input"
+    )
+    
+    return parser.parse_args()
+
+
 def main() -> None:
     """Main function to manage Calibre plugins."""
     try:
-        calibre_dir = get_calibre_dir()
+        args = parse_arguments()
+        
+        # Determine calibre directory
+        if args.calibre_dir:
+            # Explicit directory provided
+            calibre_dir = Path(args.calibre_dir)
+            os.environ["CALIBRE_DIR"] = str(calibre_dir)
+            print(f"Using specified Calibre directory: {calibre_dir}")
+        else:
+            # Get directory using existing logic with defaults flag
+            calibre_dir = get_calibre_dir(use_defaults=args.defaults)
+        
         print(f"Calibre directory: {calibre_dir}")
 
-        if not run_copy_commonfiles():
+        if not run_copy_commonfiles(use_defaults=args.defaults):
             sys.exit(1)
 
         if not validate_calibre_executables(calibre_dir):
