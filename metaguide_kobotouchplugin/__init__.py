@@ -36,7 +36,7 @@ class KoboTouchMetaguideDriver(KOBOTOUCH):
         "DO NOT INSTALL this driver if you do not know what metaguiding is and how it works and if your intention "
         "is not to explicitly use metaguiding on your Kobo device. "
         "For more information, visit https://go.hugobatista.com/gh/intellireading-calibre-plugins or "
-        "https://go.hugobatista.com/intellireading ."
+        "https://go.hugobatista.com/intellireading . "
         "This driver will metaguide ANY epub/kepub file you send to the device, by modifying its content and "
         "adding additional markup to the text, like bold tags, eventually improving your reading experience, "
         "your focus and reading speed (sometimes called bionic reading). "
