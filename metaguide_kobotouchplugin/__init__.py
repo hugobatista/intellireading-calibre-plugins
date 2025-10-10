@@ -31,14 +31,18 @@ def metaguide_file(filepath: str) -> str:
 class KoboTouchMetaguideDriver(KOBOTOUCH):
     name = "KoboTouch - Metaguide Driver (intellireading)"
     description = (
-        "Kobo Touch driver with metaguiding support for epub and kepub files. "
-        "This driver is a modified version of the KoboTouch driver from calibre, enabling "
-        "conversion of epub and kepub files to a metaguiding format before "
-        "uploading to the device. "
-        "This is done to improve your focus and reading speed (sometimes called bionic reading)."
+        "WARNING: PLEASE READ CAREFULLY BEFORE INSTALLING. "
+        "This driver IS NOT REQUIRED to send ebooks to your Kobo device - Calibre already includes a Kobo driver. "
+        "DO NOT INSTALL this driver if you do not know what metaguiding is and how it works and if your intention "
+        "is not to explicitly use metaguiding on your Kobo device. "
+        "For more information, visit https://go.hugobatista.com/gh/intellireading-calibre-plugins or "
+        "https://go.hugobatista.com/intellireading . "
+        "This driver will metaguide ANY epub/kepub file you send to the device, by modifying its content and "
+        "adding additional markup to the text, like bold tags, eventually improving your reading experience, "
+        "your focus and reading speed (sometimes called bionic reading). "
     )
     supported_platforms = ["windows", "osx", "linux"]
-    version = (2, 0, 2)
+    version = (2, 0, 3)
     minimum_calibre_version = (8, 4, 0)
     author = "Hugo Batista"
 
