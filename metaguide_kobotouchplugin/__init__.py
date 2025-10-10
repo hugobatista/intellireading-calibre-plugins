@@ -31,8 +31,8 @@ def metaguide_file(filepath: str) -> str:
 class KoboTouchMetaguideDriver(KOBOTOUCH):
     name = "KoboTouch - Metaguide Driver (intellireading)"
     description = (
-        "WARNING: PLEASE READ CAREFULLY BEFORE INSTALLING. " 
-        "This drive IS NOT REQUIRED to send ebooks to your Kobo device - Calibre already includes a Kobo driver. "
+        "WARNING: PLEASE READ CAREFULLY BEFORE INSTALLING. "
+        "This driver IS NOT REQUIRED to send ebooks to your Kobo device - Calibre already includes a Kobo driver. "
         "DO NOT INSTALL this driver if you do not know what metaguiding is and how it works and if your intention "
         "is not to explicitly use metaguiding on your Kobo device. "
         "For more information, visit https://go.hugobatista.com/gh/intellireading-calibre-plugins or "
