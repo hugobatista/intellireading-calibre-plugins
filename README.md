@@ -1,4 +1,4 @@
-![go.hugobatista.com/intellireading](https://go.hugobatista.com/ghraw/intellireading-www/main/src/img/intellireading.png)
+![go.hugobatista.com/intellireading](https://go.hugobatista.com/ghraw/intellireading-www/main/public/img/intellireading.png)
 # Calibre Plugins
 
 [![GitHub - Lint](https://go.hugobatista.com/gh/intellireading-calibre-plugins/actions/workflows/lint.yml/badge.svg)](https://go.hugobatista.com/gh/intellireading-calibre-plugins/actions/workflows/lint.yml)
