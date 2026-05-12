@@ -58,7 +58,7 @@ class KoboTouchMetaguideDriver(KOBOTOUCH):
         "your focus and reading speed (sometimes called bionic reading). "
     )
     supported_platforms = ["windows", "osx", "linux"]
-    version = (2, 0, 4)
+    version = (2, 0, 5)
     minimum_calibre_version = (8, 4, 0)
     author = "Hugo Batista"
 

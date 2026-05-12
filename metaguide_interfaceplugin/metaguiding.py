@@ -12,7 +12,6 @@ import regex as re
 # it still works
 from .__about_cli__ import __version__ as cli_version  # noqa: TID252
 
-
 _logger = logging.getLogger(__name__)
 _METAGUIDED_FLAG_FILENAME = "intellireading.metaguide"
 _EPUB_EXTENSIONS = [".EPUB", ".KEPUB"]
@@ -143,10 +142,13 @@ class RegExBoldMetaguider:
     def _get_encoding_using_lxml(self, xhtml_document: bytes) -> str | None:
         from lxml import etree
 
-        parser = etree.XMLParser(resolve_entities=False)
-        doc = etree.fromstring(xhtml_document, parser=parser).getroottree()
-        docinfo = doc.docinfo
-        return docinfo.encoding
+        try:
+            parser = etree.XMLParser(resolve_entities=False)
+            doc = etree.fromstring(xhtml_document, parser=parser).getroottree()
+            docinfo = doc.docinfo
+            return docinfo.encoding
+        except etree.XMLSyntaxError:
+            return None
 
     def _get_encoding_using_bom(self, xhtml_document: bytes) -> str | None:
         if xhtml_document.startswith(b"\xef\xbb\xbf"):
