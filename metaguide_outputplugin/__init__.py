@@ -27,7 +27,7 @@ class MetaguidedEpubOutput(EPUBOutput):
 
     supported_platforms = ["windows", "osx", "linux"]
     author = "Hugo Batista"
-    version = (2, 0, 2)
+    version = (2, 0, 5)
     file_type = "epub"
     minimum_calibre_version = (8, 4, 0)
     on_postprocess = True
