@@ -9,7 +9,6 @@ except ImportError:
     from PyQt5.Qt import QToolButton, QMenu
 from calibre.gui2 import question_dialog
 
-
 # The class that all interface action plugins must inherit from
 from calibre.gui2.actions import (
     InterfaceAction,
@@ -21,7 +20,6 @@ from calibre_plugins.metaguideinterface import (
     config,
     __about_cli__,
 )
-
 
 # Donate message for first-time users
 MSG_WELCOME = (

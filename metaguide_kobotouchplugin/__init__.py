@@ -3,7 +3,6 @@ from typing import List, Optional, Tuple
 from calibre.ebooks.metadata.book.base import Metadata
 from calibre_plugins.metaguidekobotouch import common, metaguiding
 
-
 # Constants
 MSG_ALREADY_METAGUIDED = (
     '"{name}" is already metaguided. '

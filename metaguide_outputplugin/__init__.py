@@ -71,10 +71,8 @@ class MetaguidedEpubOutput(EPUBOutput):
         return PluginWidget(parent, get_option_by_name, get_option_help, db, book_id)
 
     def convert(self, oeb_book, output, input_plugin, opts, logger):  # pylint: disable=unused-argument
-        common.log.debug(
-            f"Convert called on {self.name}. \
-            Input Plugin: {input_plugin}. Output: {output}"
-        )
+        common.log.debug(f"Convert called on {self.name}. \
+            Input Plugin: {input_plugin}. Output: {output}")
 
         EPUBOutput.convert(self, oeb_book, output, input_plugin, opts, common.log)
 
