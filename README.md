@@ -36,7 +36,7 @@ This repo is part of the [Intellireading](https://go.hugobatista.com/intelliread
 
 #### [Epub Metaguider GUI (Interface Action)](https://www.mobileread.com/forums/showthread.php?t=358615)
 **Ad**ds **butt**ons **t**o **th**e **Cali**bre **inter**face, **allo**wing **yo**u **t**o **gene**rate **metag**uided **vers**ions **o**f **yo**ur **ebo**oks **fr**om **th**e **Ma**in **Tool**bar **o**r **th**e **Cont**ext **Men**u.
-#### [KoboTouch Metaguider (Device Interface)]()
+#### [KoboTouch Metaguider (Device Interface)](https://www.mobileread.com/forums/showthread.php?p=4533585)
 **Exte**nds **th**e **KoboT**ouch **dri**ver, **allo**wing **yo**u **t**o **automa**tically **gene**rate **metag**uided **vers**ions **o**f **yo**ur **ebo**oks **wh**en **sen**ding **the**m **t**o **yo**ur **Ko**bo **devi**ce.
 
 ### Advanced plugins 
