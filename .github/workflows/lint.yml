@@ -37,7 +37,7 @@ jobs:
         run: echo ${{ steps.datetime.outputs.datetime }}
 
       - name: Checkout Code
-        uses: actions/checkout@v3.6.0
+        uses: actions/checkout@v6.0.2
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v4.7.0
