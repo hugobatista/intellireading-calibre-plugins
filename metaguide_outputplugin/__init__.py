@@ -27,7 +27,7 @@ class MetaguidedEpubOutput(EPUBOutput):
 
     supported_platforms = ["windows", "osx", "linux"]
     author = "Hugo Batista"
-    version = (2, 0, 5)
+    version = (2, 1, 0)
     file_type = "epub"
     minimum_calibre_version = (8, 4, 0)
     on_postprocess = True
@@ -78,3 +78,10 @@ class MetaguidedEpubOutput(EPUBOutput):
 
         if opts.epubmg_enable_metaguiding:
             common.log.debug("Running epubmg conversion")
+            try:
+                metaguiding.metaguide_epub_file(output, output)
+            except Exception as e:
+                common.log.error(f"Error processing {self.name}: {e}")
+                raise
+
+        common.log.debug(f"Convert finished on {self.name}")
