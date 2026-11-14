@@ -31,7 +31,9 @@ MSG_WELCOME = (
 )
 
 
-def metaguide_file(filepath: str, *, include_about_page: bool = True) -> str:
+def metaguide_file(
+    filepath: str, *, include_about_page: bool = True, fixation: int = metaguiding.DEFAULT_FIXATION
+) -> str:
     common.log.debug(f"Converting file to metaguiding format: {filepath}")
     try:
         metaguiding.metaguide_epub_file(
@@ -39,6 +41,7 @@ def metaguide_file(filepath: str, *, include_about_page: bool = True) -> str:
             filepath,
             remove_metaguiding=False,
             include_about_page=include_about_page,
+            fixation=fixation,
         )
     except Exception as e:  # pylint: disable=broad-except
         common.log.error(f"Error processing file: {filepath}")
@@ -70,6 +73,12 @@ class KoboTouchMetaguideDriver(KOBOTOUCH):
     def _config(cls):
         c = super()._config()
         c.add_opt("intellireading_include_about_page", default=True)
+        c.add_opt(
+            "intellireading_fixation",
+            default=metaguiding.DEFAULT_FIXATION,
+            type=int,
+            choices=metaguiding.FIXATION_LEVELS,
+        )
         return c
 
     @classmethod
@@ -201,6 +210,11 @@ class KoboTouchMetaguideDriver(KOBOTOUCH):
         if include_about_page is None:
             include_about_page = True
 
+        fixation = self.get_pref("intellireading_fixation")
+        if fixation is None:
+            fixation = metaguiding.DEFAULT_FIXATION
+        fixation = int(fixation)
+
         for file, name, mi in zip(files, names, metadata or [None] * len(files)):
             if not file.lower().endswith((".epub", ".kepub")):
                 common.log.debug(f"File {file} is not a supported format for metaguiding, skipping.")
@@ -228,14 +242,18 @@ class KoboTouchMetaguideDriver(KOBOTOUCH):
                                     self._log_and_show_message(f'Converted "{name}" to KEPUB...', 1000)
                                     name = name.replace(".epub", ".kepub")
                                     # Metaguide the converted file
-                                    file = metaguide_file(converted_file, include_about_page=include_about_page)
+                                    file = metaguide_file(
+                                        converted_file,
+                                        include_about_page=include_about_page,
+                                        fixation=fixation,
+                                    )
                                     self._log_and_show_message(f'Successfully metaguided "{name}"', 1000)
                                 except Exception as e:
                                     common.log.error(f"Error converting {file} to kepub: {e}")
                                     raise
                         else:
                             # If kepubify is disabled or it's a Tolino device, just metaguide the epub directly
-                            file = metaguide_file(file, include_about_page=include_about_page)
+                            file = metaguide_file(file, include_about_page=include_about_page, fixation=fixation)
                             self._log_and_show_message(f'Successfully metaguided "{name}"', 1000)
                     else:
                         # Show warning dialog about metaguided epub performance on Kobo
@@ -246,7 +264,7 @@ class KoboTouchMetaguideDriver(KOBOTOUCH):
                 else:
                     # Handle kepub files
                     if not is_file_metaguided:
-                        file = metaguide_file(file, include_about_page=include_about_page)
+                        file = metaguide_file(file, include_about_page=include_about_page, fixation=fixation)
                         self._log_and_show_message(f'Successfully metaguided "{name}"', 1000)
 
                 # Add the processed file and name to the lists

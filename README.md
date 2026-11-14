@@ -37,6 +37,19 @@ You can disable the page in the settings of each plugin:
 
 To remove the page from a book that was already metaguided, use "Remove metaguiding" and then metaguide the book again. "Remove metaguiding" always removes the about page, regardless of this setting.
 
+## Fixation level
+
+The fixation level controls how much of each word is bolded. It ranges from 1 (least bold) to 5 (most bold) and defaults to 3, which is the historical IntelliReading behaviour. Higher levels never bold less of each word.
+
+You can change it in the settings of each plugin:
+
+- **Epub Metaguider GUI (Interface Action)**: Preferences → Advanced → Plugins → EBook Metaguider (intellireading) → Customize plugin → Fixation level.
+- **Epub Metaguider post processor (FileType)**: Preferences → Advanced → Plugins → EPUB Metaguider - Post Processor (intellireading) → Customize plugin → Fixation level.
+- **Epub Metaguider output format (Output Format)**: when converting to EPUB, open the "Epub Output (metaguided)" section and choose a Fixation level.
+- **KoboTouch Metaguider (Device Interface)**: Configure device → Collections, covers && uploads → IntelliReading → Fixation level.
+
+The fixation level applies only to new conversions. EPUB files that are already metaguided are copied unchanged; use "Remove metaguiding" and then metaguide the book again to apply a different level. Standalone XHTML files have no metaguided marker, so avoid running metaguiding twice on the same file.
+
 ## What is Calibre?
 **Cali**bre **i**s **a** **fr**ee **an**d **open-s**ource **e-b**ook **mana**ger. **I**t **i**s **us**ed **fo**r **catalo**ging, **conver**ting, **read**ing **an**d **sync**ing **e-bo**oks **wi**th **e-b**ook **rea**der **devi**ces. **I**t **i**s **prima**rily **a** **fr**ee **soft**ware **sui**te **devel**oped **b**y **use**rs **o**f **e-bo**oks **fo**r **use**rs **o**f **e-bo**oks.
 **Fo**r **mo**re **inform**ation, **vis**it **th**e [**Cal**ibre **webs**ite](https://calibre-ebook.com/).

@@ -45,6 +45,7 @@ class MetaguidedEpubFileType(FileTypePlugin):
         }
 
         self.include_about_page = prefs["include_about_page"]
+        self.fixation = int(prefs["fixation"])
 
         super().__init__(*args, **kwargs)
 
@@ -73,6 +74,7 @@ class MetaguidedEpubFileType(FileTypePlugin):
                 path_to_ebook,
                 _output_path,
                 include_about_page=self.include_about_page,
+                fixation=self.fixation,
             )
         except Exception as e:
             common.log.error(f"Error running {self.name} plugin: {e}")
@@ -105,3 +107,4 @@ class MetaguidedEpubFileType(FileTypePlugin):
             "kepub": prefs["process_kepub"],
         }
         self.include_about_page = prefs["include_about_page"]
+        self.fixation = int(prefs["fixation"])

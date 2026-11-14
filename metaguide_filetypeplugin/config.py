@@ -9,6 +9,8 @@ __docformat__ = "markdown en"
 # pylint: disable=import-error
 from calibre.utils.config import JSONConfig
 
+from calibre_plugins.metaguidefiletype.metaguiding import DEFAULT_FIXATION
+
 prefs = JSONConfig("plugins/epubmg_filetype")
 
 # Event settings - when the plugin should run
@@ -21,3 +23,6 @@ prefs.defaults["process_kepub"] = True
 
 # Content settings - what to add to the metaguided EPUB
 prefs.defaults["include_about_page"] = True
+
+# Metaguiding settings
+prefs.defaults["fixation"] = DEFAULT_FIXATION

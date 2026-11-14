@@ -7,11 +7,12 @@ __copyright__ = "2025, Hugo Batista <intellireading at hugobatista.com>"
 __docformat__ = "markdown en"
 
 try:
-    from qt.core import QWidget, QVBoxLayout, QRadioButton, QCheckBox, QGroupBox, QLabel
+    from qt.core import QWidget, QVBoxLayout, QHBoxLayout, QRadioButton, QCheckBox, QGroupBox, QLabel, QComboBox
 except ImportError:
-    from PyQt5.Qt import QWidget, QVBoxLayout, QRadioButton, QCheckBox, QGroupBox, QLabel
+    from PyQt5.Qt import QWidget, QVBoxLayout, QHBoxLayout, QRadioButton, QCheckBox, QGroupBox, QLabel, QComboBox
 
 from calibre_plugins.metaguideinterface.config import prefs
+from calibre_plugins.metaguideinterface.metaguiding import DEFAULT_FIXATION, FIXATION_LEVELS
 
 
 class ConfigWidget(QWidget):
@@ -51,6 +52,20 @@ class ConfigWidget(QWidget):
         self.about_page_checkbox.setChecked(prefs["include_about_page"])
         metaguiding_layout.addWidget(self.about_page_checkbox)
 
+        fixation_layout = QHBoxLayout()
+        fixation_layout.addWidget(QLabel("Fixation level:", self))
+        self.fixation_combo = QComboBox(self)
+        for level in FIXATION_LEVELS:
+            self.fixation_combo.addItem(str(level), level)
+        fixation_index = self.fixation_combo.findData(prefs["fixation"])
+        if fixation_index < 0:
+            fixation_index = self.fixation_combo.findData(DEFAULT_FIXATION)
+        self.fixation_combo.setCurrentIndex(fixation_index)
+        self.fixation_combo.setToolTip("How much of each word is bolded. 1 = least bold, 5 = most bold. Default: 3.")
+        fixation_layout.addWidget(self.fixation_combo)
+        fixation_layout.addStretch()
+        metaguiding_layout.addLayout(fixation_layout)
+
         metaguiding_group.setLayout(metaguiding_layout)
         self.layout.addWidget(metaguiding_group)
 
@@ -64,3 +79,4 @@ class ConfigWidget(QWidget):
         """Save the current configuration."""
         prefs["default_action"] = "kepub" if self.kepub_radio.isChecked() else "epub"
         prefs["include_about_page"] = self.about_page_checkbox.isChecked()
+        prefs["fixation"] = int(self.fixation_combo.currentData())

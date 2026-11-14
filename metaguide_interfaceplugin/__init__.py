@@ -43,7 +43,8 @@ class InterfacePluginWrapper(InterfaceActionBase):
         return (
             "This plugin can be customized to change the default action when clicking the toolbar button. "
             "You can choose whether clicking the button should create a metaguided epub or kepub file. "
-            "You can also disable the IntelliReading about/donation page added to metaguided EPUBs."
+            "You can also disable the IntelliReading about/donation page added to metaguided EPUBs "
+            "and choose the fixation level, which controls how much of each word is bolded."
         )
 
     def save_settings(self, config_widget):

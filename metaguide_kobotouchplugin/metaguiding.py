@@ -28,6 +28,18 @@ _EPUB_EXTENSIONS = [".EPUB", ".KEPUB"]
 _XHTML_EXTENSIONS = [".XHTML", ".HTML", ".HTM"]
 _TOC_FILENAMES = ["nav.xhtml", "nav.html", "toc.xhtml", "toc.html"]
 
+DEFAULT_FIXATION = 3
+# Fraction of each word's characters that are bolded for each fixation level.
+_FIXATION_RATIOS = {1: 0.30, 2: 0.40, 3: 0.50, 4: 0.60, 5: 0.70}
+FIXATION_LEVELS = tuple(sorted(_FIXATION_RATIOS))
+_THREE_LETTER_WORD_LENGTH = 3
+
+
+def _validate_fixation(fixation: int) -> None:
+    if isinstance(fixation, bool) or not isinstance(fixation, int) or fixation not in _FIXATION_RATIOS:
+        msg = f"Invalid fixation level '{fixation}'. Valid levels are {FIXATION_LEVELS}"
+        raise ValueError(msg)
+
 
 def _generate_flag_file_content() -> bytes:
     """Generate the content for the metaguiding flag file.
@@ -73,8 +85,11 @@ class RegExBoldMetaguider:
     _entity_ref_regex = re.compile(r"(&[#a-zA-Z][a-zA-Z0-9]*;)")
     _bolded_word_regex = re.compile(r"<b>(.*?)</b>")
 
-    def __init__(self, fallback_encoding: str = "utf-8") -> None:
+    def __init__(self, fallback_encoding: str = "utf-8", *, fixation: int = DEFAULT_FIXATION) -> None:
+        _validate_fixation(fixation)
         self._fallback_encoding = fallback_encoding
+        self._fixation = fixation
+        self._bold_ratio = _FIXATION_RATIOS[fixation]
 
     def _bold_word(self, word: str) -> str:
         # this is the function that is called for each word
@@ -84,8 +99,14 @@ class RegExBoldMetaguider:
             return word
 
         word_length = len(word)
-        midpoint = 1 if word_length in (1, 3) else math.ceil(word_length / 2)
-        return f"<b>{word[:midpoint]}</b>{word[midpoint:]}"  # Bold the first half of the word
+        bold_length = max(1, math.ceil(word_length * self._bold_ratio))
+        if word_length == _THREE_LETTER_WORD_LENGTH and self._fixation <= DEFAULT_FIXATION:
+            # keep the historical behaviour for three letter words up to the default level
+            bold_length = 1
+        if word_length > 1:
+            # always leave at least one character unbolded
+            bold_length = min(bold_length, word_length - 1)
+        return f"<b>{word[:bold_length]}</b>{word[bold_length:]}"  # Bold the first part of the word
 
     def _unbold_word(self, word: str) -> str:
         # if the word is an empty string, whitespace or new line, return it
@@ -259,9 +280,6 @@ class _EpubItemFile:
             _logger.debug(f"Metaguided file {self.filename}")
         else:
             _logger.debug(f"Skipping file {self.filename}")
-
-
-_metaguider = RegExBoldMetaguider()
 
 
 def _get_local_name(element: Any) -> str | None:
@@ -476,7 +494,7 @@ def _serialize_opf_document(tree: Any) -> bytes:
     )
 
 
-def _inject_about_page(epub_item_files: list[_EpubItemFile]) -> bool:
+def _inject_about_page(epub_item_files: list[_EpubItemFile], metaguider: RegExBoldMetaguider) -> bool:
     opf_path = _find_opf_path(epub_item_files)
     if not opf_path:
         return False
@@ -525,7 +543,7 @@ def _inject_about_page(epub_item_files: list[_EpubItemFile]) -> bool:
         return False
 
     epub_version = (opf_root.get("version") or "3.0").strip()
-    page_content = _metaguider.metaguide_xhtml_document(_build_about_page(epub_version))
+    page_content = metaguider.metaguide_xhtml_document(_build_about_page(epub_version))
 
     item = etree.SubElement(manifest, _qualified_tag(manifest, "item"))
     item.set("id", _ABOUT_PAGE_MANIFEST_ID)
@@ -639,11 +657,11 @@ def _get_epub_item_files_from_zip(input_zip: zipfile.ZipFile) -> list[_EpubItemF
 
 
 def _process_epub_item_files(
-    epub_item_files: list[_EpubItemFile], *, remove_metaguiding: bool = False
+    epub_item_files: list[_EpubItemFile], *, metaguider: RegExBoldMetaguider, remove_metaguiding: bool = False
 ) -> Generator[_EpubItemFile]:
     for epub_item_file in epub_item_files:
         _logger.debug(f"Processing file '{epub_item_file.filename}' remove_metaguiding={remove_metaguiding}")
-        epub_item_file.metaguide(_metaguider, remove_metaguiding=remove_metaguiding)
+        epub_item_file.metaguide(metaguider, remove_metaguiding=remove_metaguiding)
         yield epub_item_file
 
 
@@ -710,6 +728,7 @@ def metaguide_epub_file(
     *,
     remove_metaguiding: bool = False,
     include_about_page: bool = True,
+    fixation: int = DEFAULT_FIXATION,
 ) -> None:
     """Metaguide an epub file
     input_file: str
@@ -720,6 +739,8 @@ def metaguide_epub_file(
         If True, removes metaguiding from the epub file
     include_about_page: bool
         If True, adds the IntelliReading about/donation page to the end of the epub
+    fixation: int
+        How much of each word is bolded, from 1 (least) to 5 (most). Defaults to 3
     """
 
     _logger.debug(f"Processing file '{input_file}' to output '{output_file}'")
@@ -732,6 +753,7 @@ def metaguide_epub_file(
             input_file_stream,
             remove_metaguiding=remove_metaguiding,
             include_about_page=include_about_page,
+            fixation=fixation,
         )
         with open(output_file, "wb") as output_writer:
             output_writer.write(output_file_stream.read())
@@ -742,6 +764,7 @@ def metaguide_epub_stream(
     *,
     remove_metaguiding: bool = False,
     include_about_page: bool = True,
+    fixation: int = DEFAULT_FIXATION,
 ) -> BytesIO:
     """Metaguide an epub input stream
     input_file_stream: BytesIO
@@ -750,10 +773,13 @@ def metaguide_epub_stream(
         If True, removes metaguiding from the epub file
     include_about_page: bool
         If True, adds the IntelliReading about/donation page to the end of the epub
+    fixation: int
+        How much of each word is bolded, from 1 (least) to 5 (most). Defaults to 3
     return: BytesIO
         The metaguided epub file stream
     """
     output_stream = BytesIO()
+    metaguider = RegExBoldMetaguider(fixation=fixation)
 
     if remove_metaguiding:
         _logger.debug("Removing metaguiding from epub")
@@ -778,7 +804,9 @@ def metaguide_epub_stream(
                         target.write(source.read())
             else:
                 processed_item_files = list(
-                    _process_epub_item_files(epub_item_files, remove_metaguiding=remove_metaguiding)
+                    _process_epub_item_files(
+                        epub_item_files, metaguider=metaguider, remove_metaguiding=remove_metaguiding
+                    )
                 )
 
                 if remove_metaguiding:
@@ -788,7 +816,7 @@ def metaguide_epub_stream(
                     processed_item_files = list(filtered_files)
                 else:
                     if include_about_page:
-                        _inject_about_page(processed_item_files)
+                        _inject_about_page(processed_item_files, metaguider)
                     _logger.debug("Processing zip: Adding metaguided flag file")
                     flag_content = _generate_flag_file_content()
                     processed_item_files.append(_EpubItemFile(_METAGUIDED_FLAG_FILENAME, flag_content))
@@ -800,7 +828,9 @@ def metaguide_epub_stream(
     return output_stream
 
 
-def metaguide_xhtml_file(input_file: str, output_file: str, *, remove_metaguiding: bool = False) -> None:
+def metaguide_xhtml_file(
+    input_file: str, output_file: str, *, remove_metaguiding: bool = False, fixation: int = DEFAULT_FIXATION
+) -> None:
     """Metaguide an xhtml file
     input_file: str
         The input xhtml file
@@ -808,6 +838,8 @@ def metaguide_xhtml_file(input_file: str, output_file: str, *, remove_metaguidin
         The output xhtml file
     remove_metaguiding: bool
         If True, removes metaguiding from the xhtml file
+    fixation: int
+        How much of each word is bolded, from 1 (least) to 5 (most). Defaults to 3
     """
     _logger.debug(f"Processing file '{input_file}' to output '{output_file}'")
     _ensure_file_exists(input_file)
@@ -815,24 +847,31 @@ def metaguide_xhtml_file(input_file: str, output_file: str, *, remove_metaguidin
 
     with open(input_file, "rb") as input_reader:
         input_file_stream = BytesIO(input_reader.read())
-        output_file_stream = metaguide_xhtml_stream(input_file_stream, remove_metaguiding=remove_metaguiding)
+        output_file_stream = metaguide_xhtml_stream(
+            input_file_stream, remove_metaguiding=remove_metaguiding, fixation=fixation
+        )
     output_file_stream.seek(0)
     with open(output_file, "wb") as output_writer:
         output_writer.write(output_file_stream.read())
 
 
-def metaguide_xhtml_stream(input_file_stream: BytesIO, *, remove_metaguiding: bool = False) -> BytesIO:
+def metaguide_xhtml_stream(
+    input_file_stream: BytesIO, *, remove_metaguiding: bool = False, fixation: int = DEFAULT_FIXATION
+) -> BytesIO:
     """Metaguide an xhtml input stream
     input_file_stream: BytesIO
         The input xhtml file stream
     remove_metaguiding: bool
         If True, removes metaguiding from the xhtml file
+    fixation: int
+        How much of each word is bolded, from 1 (least) to 5 (most). Defaults to 3
     return: BytesIO
         The metaguided xhtml file stream
     """
+    metaguider = RegExBoldMetaguider(fixation=fixation)
     output_file_stream = BytesIO()
     output_file_stream.write(
-        _metaguider.metaguide_xhtml_document(input_file_stream.read(), remove_metaguiding=remove_metaguiding)
+        metaguider.metaguide_xhtml_document(input_file_stream.read(), remove_metaguiding=remove_metaguiding)
     )
     output_file_stream.seek(0)
     return output_file_stream
@@ -844,6 +883,7 @@ def metaguide_dir(
     *,
     remove_metaguiding: bool = False,
     include_about_page: bool = True,
+    fixation: int = DEFAULT_FIXATION,
 ) -> None:
     """Metaguides all epubs and xhtml found in a directory (recursively)
     input_dir: str
@@ -854,7 +894,11 @@ def metaguide_dir(
         If True, removes metaguiding from the files
     include_about_page: bool
         If True, adds the IntelliReading about/donation page to the end of epub files
+    fixation: int
+        How much of each word is bolded, from 1 (least) to 5 (most). Defaults to 3
     """
+
+    _validate_fixation(fixation)
 
     # get a list of all the files in the directory, and the child directories if recursive
     # verify if the file is a file and if it has the correct extension
@@ -897,10 +941,11 @@ def metaguide_dir(
                         input_file_stream,
                         remove_metaguiding=remove_metaguiding,
                         include_about_page=include_about_page,
+                        fixation=fixation,
                     )
                 else:
                     output_file_stream = metaguide_xhtml_stream(
-                        input_file_stream, remove_metaguiding=remove_metaguiding
+                        input_file_stream, remove_metaguiding=remove_metaguiding, fixation=fixation
                     )
                 with open(output_filename, "wb") as output_writer:
                     output_writer.write(output_file_stream.read())

@@ -11,6 +11,7 @@ from calibre.gui2.convert.epub_output import PluginWidget as EPUBPluginWidget
 from calibre.gui2.convert.epub_output_ui import Ui_Form as EPUBUIForm
 
 from calibre_plugins.metaguideoutput import common
+from calibre_plugins.metaguideoutput.metaguiding import FIXATION_LEVELS
 
 
 class PluginWidget(EPUBPluginWidget, EPUBUIForm):
@@ -33,7 +34,8 @@ class PluginWidget(EPUBPluginWidget, EPUBUIForm):
         Widget.__init__(
             self,
             parent,
-            OPTIONS["output"].get("epub", tuple()) + ("epubmg_enable_metaguiding", "epubmg_include_about_page"),
+            OPTIONS["output"].get("epub", tuple())
+            + ("epubmg_enable_metaguiding", "epubmg_include_about_page", "epubmg_fixation"),
         )
         self.opt_no_svg_cover.toggle()
         self.opt_no_svg_cover.toggle()
@@ -78,6 +80,25 @@ class PluginWidget(EPUBPluginWidget, EPUBUIForm):
 
         self.opt_epubmg_enable_metaguiding.toggled.connect(self.opt_epubmg_include_about_page.setEnabled)
         self.opt_epubmg_include_about_page.setEnabled(self.opt_epubmg_enable_metaguiding.isChecked())
+
+        _rows += 1
+
+        # epubmg_fixation
+        self.opt_epubmg_fixation_label = QtWidgets.QLabel(_("Fixation level") + ":", Form)  # type: ignore # noqa
+        self.gridLayout.addWidget(self.opt_epubmg_fixation_label, _rows, 0, 1, 1)
+
+        self.opt_epubmg_fixation = QtWidgets.QComboBox(Form)
+        self.opt_epubmg_fixation.setObjectName("opt_epubmg_fixation")
+        self.opt_epubmg_fixation.addItems([str(level) for level in FIXATION_LEVELS])
+        self.opt_epubmg_fixation.setToolTip(
+            _("How much of each word is bolded: 1 = least bold, 5 = most bold. Default: 3.")  # type: ignore # noqa
+        )
+        self.gridLayout.addWidget(self.opt_epubmg_fixation, _rows, 1, 1, 1)
+
+        self.opt_epubmg_enable_metaguiding.toggled.connect(self.opt_epubmg_fixation_label.setEnabled)
+        self.opt_epubmg_enable_metaguiding.toggled.connect(self.opt_epubmg_fixation.setEnabled)
+        self.opt_epubmg_fixation_label.setEnabled(self.opt_epubmg_enable_metaguiding.isChecked())
+        self.opt_epubmg_fixation.setEnabled(self.opt_epubmg_enable_metaguiding.isChecked())
 
         _rows += 1
 

@@ -56,6 +56,14 @@ class MetaguidedEpubOutput(EPUBOutput):
                 "Disable this to keep the EPUB content unchanged."
             ),
         ),
+        OptionRecommendation(
+            name="epubmg_fixation",
+            recommended_value=str(metaguiding.DEFAULT_FIXATION),
+            choices=tuple(str(level) for level in metaguiding.FIXATION_LEVELS),
+            help=_(  # type: ignore # noqa
+                "How much of each word is bolded: 1 = least bold, 5 = most bold. Default: 3."
+            ),
+        ),
     }
     epubmg_recommendations: Set[Tuple[str, Any, int]] = {("epub_version", "3", OptionRecommendation.LOW)}
 
@@ -91,6 +99,7 @@ class MetaguidedEpubOutput(EPUBOutput):
                     output,
                     output,
                     include_about_page=opts.epubmg_include_about_page,
+                    fixation=int(opts.epubmg_fixation),
                 )
             except Exception as e:
                 common.log.error(f"Error processing {self.name}: {e}")

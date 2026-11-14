@@ -167,6 +167,7 @@ class InterfacePlugin(InterfaceAction):
                 temp_file,
                 remove_metaguiding=remove_metaguiding,
                 include_about_page=config.prefs["include_about_page"],
+                fixation=int(config.prefs["fixation"]),
             )
         except Exception as e:  # pylint: disable=broad-except
             log_message = f"Error processing book '{book_title}', format: {format_to_find}, error details: {e}"
