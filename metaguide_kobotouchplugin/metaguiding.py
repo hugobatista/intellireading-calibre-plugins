@@ -78,12 +78,37 @@ def _generate_flag_file_content() -> bytes:
 
 
 class RegExBoldMetaguider:
+    """Metaguide the prose of an XHTML document.
+
+    Only text nodes inside ``<body>`` are bolded. Non-prose regions are preserved
+    byte-for-byte: raw-text elements (``<style>`` and ``<script>``), literal
+    containers (``<pre>``, ``<code>`` and the SVG ``<text>``/``<tspan>`` elements),
+    CDATA sections and HTML comments.
+
+    SVG ``<text>``/``<tspan>`` elements are matched by name, with or without a
+    namespace prefix. Other elements that use those names are treated the same way,
+    because the regex pipeline is not namespace aware.
+    """
+
     _body_regex = re.compile(r"<body[^>]*>(.*)</body>", re.DOTALL)
     _text_block_regex = re.compile(r"(?<!<b[^>]*)>[^\S]*[^\s<][^<]*[^\S\n]*<")
     _bolded_text_block_regex = re.compile(r"<b>\b\w{1}\b</b>|<b>\b\w+\b</b>(?:\b\w+\b)")
     _word_pattern_regex = re.compile(r"\b\w+\b", re.UNICODE)
     _entity_ref_regex = re.compile(r"(&[#a-zA-Z][a-zA-Z0-9]*;)")
     _bolded_word_regex = re.compile(r"<b>(.*?)</b>")
+    # The optional namespace prefix matches prefixed SVG elements; the (?<!/) guard skips
+    # self-closing tags. Only the content is replaced, so text-node boundaries are preserved.
+    _non_prose_region_regex = re.compile(
+        r"<(?P<tag>(?:[A-Za-z_][\w.-]*:)?(?:style|script|pre|code|text|tspan))(?=[\s/>])"
+        r"[^>]*?(?<!/)>(?P<element_content>.*?)</(?P=tag)\s*>"
+        r"|<!\[CDATA\[(?P<cdata_content>.*?)\]\]>"
+        r"|<!--(?P<comment_content>.*?)-->",
+        re.DOTALL | re.IGNORECASE,
+    )
+    _non_prose_content_group_names = ("element_content", "cdata_content", "comment_content")
+    # XML 1.0 forbids NUL and SOH, so this sentinel cannot clash with real document content.
+    _non_prose_sentinel = "\x00\x01"
+    _non_prose_sentinel_regex = re.compile(r"\x00\x01")
 
     def __init__(self, fallback_encoding: str = "utf-8", *, fixation: int = DEFAULT_FIXATION) -> None:
         _validate_fixation(fixation)
@@ -149,6 +174,51 @@ class RegExBoldMetaguider:
             return ">" + new_node_text + "<"
         return node
 
+    def _protect_non_prose_regions(self, body: str) -> tuple[str, list[str]]:
+        """Replace the content of non-prose regions with a sentinel, keeping their markup."""
+        contents: list[str] = []
+
+        def _replace_region(match: re.Match[str]) -> str:
+            content_group_name = next(
+                (name for name in self._non_prose_content_group_names if match.group(name) is not None),
+                None,
+            )
+            if content_group_name is None:  # pragma: no cover - defence against regex changes
+                msg = "Non-prose region matched without a content group"
+                raise RuntimeError(msg)
+
+            content = match.group(content_group_name)
+            contents.append(content)
+            match_start = match.start(0)
+            content_start = match.start(content_group_name) - match_start
+            content_end = match.end(content_group_name) - match_start
+            whole_match = match.group(0)
+            return whole_match[:content_start] + self._non_prose_sentinel + whole_match[content_end:]
+
+        return self._non_prose_region_regex.sub(_replace_region, body), contents
+
+    def _restore_non_prose_regions(self, body: str, contents: list[str]) -> str:
+        """Restore the regions protected by ``_protect_non_prose_regions``, in order."""
+        sentinel_count = len(self._non_prose_sentinel_regex.findall(body))
+        if sentinel_count != len(contents):
+            msg = f"Expected {len(contents)} non-prose sentinels, found {sentinel_count}"
+            raise RuntimeError(msg)
+
+        content_iterator = iter(contents)
+        return self._non_prose_sentinel_regex.sub(lambda _: next(content_iterator), body)
+
+    def _bold_text_blocks(self, body: str) -> str:
+        return self._text_block_regex.sub(lambda match: self._bold_text_node(match.group()), body)
+
+    def _bold_body(self, body: str) -> str:
+        # A sentinel in the input would make the protected content ambiguous, so skip protection and bold as before.
+        if self._non_prose_sentinel in body:
+            _logger.warning("Body contains the internal metaguiding sentinel, skipping non-prose protection")
+            return self._bold_text_blocks(body)
+
+        protected_body, contents = self._protect_non_prose_regions(body)
+        return self._restore_non_prose_regions(self._bold_text_blocks(protected_body), contents)
+
     def _bold_document(self, html: str, *, remove_metaguiding: bool = False) -> str:
         # get the body. If there is no body, return the original html
         match = self._body_regex.search(html)
@@ -158,10 +228,7 @@ class RegExBoldMetaguider:
         body = match.group(1)
         if not remove_metaguiding:
             # find all text nodes in the body and trigger the bolding of the words
-            body = self._text_block_regex.sub(
-                lambda m: self._bold_text_node(m.group()),
-                body,
-            )
+            body = self._bold_body(body)
         else:
             body = self._bolded_text_block_regex.sub(lambda m: self._unbold_node_text_part(m.group()), body)
 
