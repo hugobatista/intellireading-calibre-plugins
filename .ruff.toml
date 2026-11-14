@@ -1,4 +1,0 @@
-# Keep the rule selection explicit so that changes to ruff's default rules
-# do not break the lint job without any code change.
-line-length = 120
-lint.select = ["E4", "E7", "E9", "F"]
