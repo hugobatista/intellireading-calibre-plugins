@@ -18,3 +18,6 @@ prefs.defaults["enable_on_import"] = False
 # File type settings - which files to process
 prefs.defaults["process_epub"] = True
 prefs.defaults["process_kepub"] = True
+
+# Content settings - what to add to the metaguided EPUB
+prefs.defaults["include_about_page"] = True

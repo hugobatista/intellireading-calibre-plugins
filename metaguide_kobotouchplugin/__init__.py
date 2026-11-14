@@ -31,10 +31,15 @@ MSG_WELCOME = (
 )
 
 
-def metaguide_file(filepath: str) -> str:
+def metaguide_file(filepath: str, *, include_about_page: bool = True) -> str:
     common.log.debug(f"Converting file to metaguiding format: {filepath}")
     try:
-        metaguiding.metaguide_epub_file(filepath, filepath, remove_metaguiding=False)
+        metaguiding.metaguide_epub_file(
+            filepath,
+            filepath,
+            remove_metaguiding=False,
+            include_about_page=include_about_page,
+        )
     except Exception as e:  # pylint: disable=broad-except
         common.log.error(f"Error processing file: {filepath}")
         common.log.error(str(e))
@@ -57,9 +62,31 @@ class KoboTouchMetaguideDriver(KOBOTOUCH):
         "your focus and reading speed (sometimes called bionic reading). "
     )
     supported_platforms = ["windows", "osx", "linux"]
-    version = (2, 0, 5)
+    version = (2, 1, 0)
     minimum_calibre_version = (8, 4, 0)
     author = "Hugo Batista"
+
+    @classmethod
+    def _config(cls):
+        c = super()._config()
+        c.add_opt("intellireading_include_about_page", default=True)
+        return c
+
+    @classmethod
+    def config_widget(cls):
+        from calibre_plugins.metaguidekobotouch.config_ui import IntelliReadingKoboTouchConfig
+
+        cls.current_friendly_name = cls.gui_name
+        return IntelliReadingKoboTouchConfig(
+            cls.settings(),
+            cls.FORMATS,
+            cls.SUPPORTS_SUB_DIRS,
+            cls.MUST_READ_METADATA,
+            cls.SUPPORTS_USE_AUTHOR_SORT,
+            cls.EXTRA_CUSTOMIZATION_MESSAGE,
+            cls,
+            extra_customization_choices=cls.EXTRA_CUSTOMIZATION_CHOICES,
+        )
 
     def initialize(self) -> None:
         common.log.debug(f"Initializing {self.name} plugin")
@@ -170,6 +197,10 @@ class KoboTouchMetaguideDriver(KOBOTOUCH):
 
         gui = get_gui()
 
+        include_about_page = self.get_pref("intellireading_include_about_page")
+        if include_about_page is None:
+            include_about_page = True
+
         for file, name, mi in zip(files, names, metadata or [None] * len(files)):
             if not file.lower().endswith((".epub", ".kepub")):
                 common.log.debug(f"File {file} is not a supported format for metaguiding, skipping.")
@@ -197,14 +228,14 @@ class KoboTouchMetaguideDriver(KOBOTOUCH):
                                     self._log_and_show_message(f'Converted "{name}" to KEPUB...', 1000)
                                     name = name.replace(".epub", ".kepub")
                                     # Metaguide the converted file
-                                    file = metaguide_file(converted_file)
+                                    file = metaguide_file(converted_file, include_about_page=include_about_page)
                                     self._log_and_show_message(f'Successfully metaguided "{name}"', 1000)
                                 except Exception as e:
                                     common.log.error(f"Error converting {file} to kepub: {e}")
                                     raise
                         else:
                             # If kepubify is disabled or it's a Tolino device, just metaguide the epub directly
-                            file = metaguide_file(file)
+                            file = metaguide_file(file, include_about_page=include_about_page)
                             self._log_and_show_message(f'Successfully metaguided "{name}"', 1000)
                     else:
                         # Show warning dialog about metaguided epub performance on Kobo
@@ -215,7 +246,7 @@ class KoboTouchMetaguideDriver(KOBOTOUCH):
                 else:
                     # Handle kepub files
                     if not is_file_metaguided:
-                        file = metaguide_file(file)
+                        file = metaguide_file(file, include_about_page=include_about_page)
                         self._log_and_show_message(f'Successfully metaguided "{name}"', 1000)
 
                 # Add the processed file and name to the lists

@@ -1,10 +1,14 @@
 import logging
 from io import BytesIO
 import os
+import posixpath
 import sys
 import traceback
 import zipfile
-from typing import Generator
+from collections.abc import Generator
+from html import escape
+from typing import Any, cast
+from urllib.parse import unquote
 import math
 import regex as re
 
@@ -14,6 +18,12 @@ from .__about_cli__ import __version__ as cli_version  # noqa: TID252
 
 _logger = logging.getLogger(__name__)
 _METAGUIDED_FLAG_FILENAME = "intellireading.metaguide"
+_ABOUT_PAGE_FILENAME = "intellireading-about.xhtml"
+_ABOUT_PAGE_MANIFEST_ID = "intellireading-about"
+_ABOUT_PAGE_GENERATOR = "IntelliReading Metaguiding"
+_DONATION_URL = "https://go.hugobatista.com/donate-intellireading"
+_WEBSITE_URL = "https://intellireading.com/"
+_XML_BASE_ATTRIBUTE = "{http://www.w3.org/XML/1998/namespace}base"
 _EPUB_EXTENSIONS = [".EPUB", ".KEPUB"]
 _XHTML_EXTENSIONS = [".XHTML", ".HTML", ".HTM"]
 _TOC_FILENAMES = ["nav.xhtml", "nav.html", "toc.xhtml", "toc.html"]
@@ -146,7 +156,7 @@ class RegExBoldMetaguider:
             parser = etree.XMLParser(resolve_entities=False)
             doc = etree.fromstring(xhtml_document, parser=parser).getroottree()
             docinfo = doc.docinfo
-            return docinfo.encoding
+            return cast(str | None, docinfo.encoding)
         except etree.XMLSyntaxError:
             return None
 
@@ -169,15 +179,17 @@ class RegExBoldMetaguider:
         if not xhtml_document.startswith(b"<?xml "):
             return None
 
-        xml_header_end = xhtml_document.find(b"?>") + 1
-        if xml_header_end == 0:
-            msg = "Invalid XHTML document. Could not find closing XML element."
-            raise ValueError(msg)
+        xml_header_end = xhtml_document.find(b"?>")
+        if xml_header_end == -1:
+            # a truncated XML header is invalid, but should not prevent the remaining
+            # encoding detectors (BOM and lxml) from running
+            _logger.debug("XML header has no closing '?>'. Trying other encoding detection methods.")
+            return None
 
-        header = xhtml_document[:xml_header_end].decode("utf-8")
+        header = xhtml_document[: xml_header_end + 2].decode("utf-8")
         match = re.search(r'encoding=(["\'])([a-zA-Z][a-zA-Z0-9-]{0,38}[a-zA-Z0-9])\1', header)
         if match:
-            return match.group(2)
+            return cast(str, match.group(2))
         else:
             # although the XML header is present, it does not contain an encoding
             # this is not a valid XHTML document, but we can still try to detect the encoding on a later stage
@@ -212,7 +224,6 @@ class RegExBoldMetaguider:
 
 
 class _EpubItemFile:
-
     def __init__(self, filename: str | None = None, content: bytes = b"") -> None:
         self.filename = filename
         self.content = content
@@ -225,20 +236,22 @@ class _EpubItemFile:
         # this is a heuristic and may not be 100% accurate.
         # Separate the directory check from the filename check
         self.is_toc_document = False
+        self.is_about_page = False
         if self.filename:
             # Normalize the filename to lowercase for comparison and remove the directory part
             filename_base = os.path.basename(self.filename.lower())
             self.is_toc_document = filename_base in _TOC_FILENAMES
+            self.is_about_page = filename_base == _ABOUT_PAGE_FILENAME
         self.metaguided = False  # flag to indicate if the file has been metaguided. Useful for multi-threading
 
     def __str__(self) -> str:
         return f"{self.filename} ({len(self.content)} bytes)"
 
-    def metaguide(self, metaguider: RegExBoldMetaguider, *, remove_metaguiding: bool = False):
+    def metaguide(self, metaguider: RegExBoldMetaguider, *, remove_metaguiding: bool = False) -> None:
         if not remove_metaguiding and self.metaguided:
             _logger.warning(f"File {self.filename} already metaguided, skipping")
-        elif self.is_toc_document:
-            _logger.debug(f"Skipping nav/toc file {self.filename}")
+        elif self.is_toc_document or self.is_about_page:
+            _logger.debug(f"Skipping nav/toc/about page file {self.filename}")
         elif self.is_xhtml_document:
             _logger.debug(f"Metaguiding file {self.filename}")
             self.content = metaguider.metaguide_xhtml_document(self.content, remove_metaguiding=remove_metaguiding)
@@ -251,7 +264,370 @@ class _EpubItemFile:
 _metaguider = RegExBoldMetaguider()
 
 
-def _get_epub_item_files_from_zip(input_zip: zipfile.ZipFile) -> list:
+def _get_local_name(element: Any) -> str | None:
+    tag = getattr(element, "tag", None)
+    if not isinstance(tag, str):
+        return None
+    return tag.rsplit("}", 1)[-1]
+
+
+def _find_child_by_local_name(parent: Any, local_name: str) -> Any | None:
+    for child in parent:
+        if _get_local_name(child) == local_name:
+            return child
+    return None
+
+
+def _qualified_tag(parent: Any, local_name: str) -> str:
+    tag = getattr(parent, "tag", None)
+    if isinstance(tag, str) and tag.startswith("{"):
+        namespace = tag[1:].split("}", 1)[0]
+        return f"{{{namespace}}}{local_name}"
+    return local_name
+
+
+def _find_opf_path(epub_item_files: list[_EpubItemFile]) -> str | None:
+    container_item = next((f for f in epub_item_files if f.filename == "META-INF/container.xml"), None)
+    if container_item is not None:
+        try:
+            from lxml import etree
+
+            parser = etree.XMLParser(resolve_entities=False, load_dtd=False, no_network=True)
+            container_root = etree.fromstring(container_item.content, parser)
+            for element in container_root.iter():
+                if _get_local_name(element) != "rootfile":
+                    continue
+                full_path = (element.get("full-path") or "").strip()
+                media_type = (element.get("media-type") or "").strip()
+                if not full_path or (media_type and media_type != "application/oebps-package+xml"):
+                    continue
+                candidates = [full_path, posixpath.normpath(full_path)]
+                unquoted_path = unquote(full_path)
+                if unquoted_path != full_path:
+                    candidates.extend([unquoted_path, posixpath.normpath(unquoted_path)])
+                for candidate in candidates:
+                    if any(f.filename == candidate for f in epub_item_files):
+                        return candidate
+                _logger.warning(f"OPF path '{full_path}' from container.xml was not found in the EPUB")
+        except Exception as e:
+            _logger.warning(f"Could not read META-INF/container.xml: {e}")
+
+    opf_filenames = [f.filename for f in epub_item_files if f.filename and f.filename.lower().endswith(".opf")]
+    if len(opf_filenames) == 1:
+        return opf_filenames[0]
+
+    _logger.warning("Could not determine the EPUB package document (OPF) path")
+    return None
+
+
+def _find_item_by_filename(epub_item_files: list[_EpubItemFile], filename: str) -> _EpubItemFile | None:
+    return next((f for f in epub_item_files if f.filename == filename), None)
+
+
+def _build_about_page(epub_version: str, tool_version: str = cli_version) -> bytes:
+    """Build the about/donation page.
+
+    Visible URLs are wrapped in <b> so the metaguider does not split them into bold fragments.
+    """
+    version = escape(tool_version)
+    if epub_version.strip().startswith(("1", "2")):
+        doctype = '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">'
+        charset_meta = '<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>'
+    else:
+        doctype = "<!DOCTYPE html>"
+        charset_meta = '<meta charset="utf-8"/>'
+
+    return f"""<?xml version="1.0" encoding="utf-8"?>
+{doctype}
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en" dir="ltr">
+<head>
+  {charset_meta}
+  <meta name="generator" content="{_ABOUT_PAGE_GENERATOR} {version}"/>
+  <title>Thank you for using IntelliReading</title>
+</head>
+<body>
+  <h1>Thank you for using IntelliReading</h1>
+  <p>This ebook was metaguided with <strong>IntelliReading Metaguiding</strong> (version {version}).</p>
+  <p>IntelliReading is free and open source. If it improves your reading experience, please consider supporting
+  its development with a donation. Your contribution helps keep these tools free and improving for the reading
+  community.</p>
+  <p><strong>Donate:</strong><br/>
+  <a href="{_DONATION_URL}"><b>{_DONATION_URL}</b></a></p>
+  <p><strong>Learn more:</strong><br/>
+  <a href="{_WEBSITE_URL}"><b>{_WEBSITE_URL}</b></a></p>
+  <hr/>
+  <p><small>This page was added automatically by IntelliReading Metaguiding.</small></p>
+</body>
+</html>
+""".encode()
+
+
+def _is_fixed_layout(opf_root: Any) -> bool:
+    for element in opf_root.iter():
+        local_name = _get_local_name(element)
+        if local_name == "meta":
+            property_name = (element.get("property") or "").strip()
+            property_value = (element.text or "").strip()
+            if property_name == "rendition:layout" and property_value == "pre-paginated":
+                return True
+            if element.get("name") == "fixed-layout" and (element.get("content") or "").strip().lower() == "true":
+                return True
+        elif local_name == "itemref":
+            properties = (element.get("properties") or "").split()
+            if "rendition:layout-pre-paginated" in properties:
+                return True
+    return False
+
+
+def _is_apple_fixed_layout(epub_item_files: list[_EpubItemFile]) -> bool:
+    options_item = next(
+        (f for f in epub_item_files if f.filename == "META-INF/com.apple.ibooks.display-options.xml"),
+        None,
+    )
+    if options_item is None:
+        return False
+
+    try:
+        from lxml import etree
+
+        parser = etree.XMLParser(resolve_entities=False, load_dtd=False, no_network=True)
+        options_root = etree.fromstring(options_item.content, parser)
+    except Exception as e:
+        _logger.debug(f"Could not parse Apple iBooks display options: {e}")
+        return False
+
+    for option in options_root.iter():
+        if _get_local_name(option) != "option":
+            continue
+        if option.get("name") == "fixed-layout" and (option.text or "").strip().lower() == "true":
+            return True
+    return False
+
+
+def _href_basename(href: str) -> str:
+    href_path = unquote(href.split("#", 1)[0].split("?", 1)[0])
+    return posixpath.basename(href_path).lower()
+
+
+def _has_about_page_file(epub_item_files: list[_EpubItemFile]) -> bool:
+    about_page_filename = _ABOUT_PAGE_FILENAME.lower()
+    return any(
+        epub_item_file.filename and posixpath.basename(epub_item_file.filename).lower() == about_page_filename
+        for epub_item_file in epub_item_files
+    )
+
+
+def _manifest_has_about_page(manifest: Any) -> bool:
+    about_page_id = _ABOUT_PAGE_MANIFEST_ID.lower()
+    about_page_filename = _ABOUT_PAGE_FILENAME.lower()
+    for item in manifest:
+        if _get_local_name(item) != "item":
+            continue
+        if (item.get("id") or "").lower() == about_page_id:
+            return True
+        href = item.get("href")
+        if href and _href_basename(href) == about_page_filename:
+            return True
+    return False
+
+
+def _spine_has_about_page(spine: Any) -> bool:
+    about_page_id = _ABOUT_PAGE_MANIFEST_ID.lower()
+    for itemref in spine:
+        if _get_local_name(itemref) != "itemref":
+            continue
+        if (itemref.get("idref") or "").lower() == about_page_id:
+            return True
+    return False
+
+
+def _opf_has_about_page(manifest: Any, spine: Any) -> bool:
+    return _manifest_has_about_page(manifest) or _spine_has_about_page(spine)
+
+
+def _resolve_href_paths(opf_dir: str, href: str) -> set[str]:
+    href_path = href.split("#", 1)[0].split("?", 1)[0].strip()
+    if not href_path:
+        return set()
+    if href_path.startswith("/"):
+        href_path = href_path.lstrip("/")
+    normalized = posixpath.normpath(posixpath.join(opf_dir, href_path) if opf_dir else href_path)
+    return {normalized, unquote(normalized)}
+
+
+def _serialize_opf_document(tree: Any) -> bytes:
+    from lxml import etree
+
+    tostring_kwargs: dict[str, Any] = {}
+    if tree.docinfo.doctype:
+        tostring_kwargs["doctype"] = tree.docinfo.doctype
+    if tree.docinfo.standalone is not None:
+        tostring_kwargs["standalone"] = tree.docinfo.standalone
+    return cast(
+        bytes,
+        etree.tostring(
+            tree,
+            xml_declaration=True,
+            encoding=tree.docinfo.encoding or "utf-8",
+            **tostring_kwargs,
+        ),
+    )
+
+
+def _inject_about_page(epub_item_files: list[_EpubItemFile]) -> bool:
+    opf_path = _find_opf_path(epub_item_files)
+    if not opf_path:
+        return False
+
+    opf_item = _find_item_by_filename(epub_item_files, opf_path)
+    if opf_item is None:
+        _logger.warning(f"OPF file '{opf_path}' was not found in the EPUB, skipping about page")
+        return False
+
+    opf_dir = posixpath.dirname(opf_path)
+    page_path = posixpath.join(opf_dir, _ABOUT_PAGE_FILENAME) if opf_dir else _ABOUT_PAGE_FILENAME
+    if _has_about_page_file(epub_item_files):
+        _logger.debug("An IntelliReading about page file already exists, skipping")
+        return False
+
+    try:
+        from lxml import etree
+    except ImportError as e:
+        _logger.warning(f"Could not import lxml, skipping about page: {e}")
+        return False
+
+    try:
+        parser = etree.XMLParser(resolve_entities=False, load_dtd=False, no_network=True, remove_blank_text=False)
+        tree = etree.fromstring(opf_item.content, parser).getroottree()
+        opf_root = tree.getroot()
+    except Exception as e:
+        _logger.warning(f"Could not parse OPF file '{opf_path}', skipping about page: {e}")
+        return False
+
+    manifest = _find_child_by_local_name(opf_root, "manifest")
+    spine = _find_child_by_local_name(opf_root, "spine")
+    if manifest is None or spine is None:
+        _logger.warning(f"OPF file '{opf_path}' has no manifest or spine, skipping about page")
+        return False
+
+    if opf_root.get(_XML_BASE_ATTRIBUTE) or manifest.get(_XML_BASE_ATTRIBUTE) or spine.get(_XML_BASE_ATTRIBUTE):
+        _logger.warning(f"OPF file '{opf_path}' uses xml:base, skipping about page")
+        return False
+
+    if _is_fixed_layout(opf_root) or _is_apple_fixed_layout(epub_item_files):
+        _logger.info(f"Skipping about page for fixed-layout EPUB '{opf_path}'")
+        return False
+
+    if _opf_has_about_page(manifest, spine):
+        _logger.debug(f"About page is already listed in '{opf_path}', skipping")
+        return False
+
+    epub_version = (opf_root.get("version") or "3.0").strip()
+    page_content = _metaguider.metaguide_xhtml_document(_build_about_page(epub_version))
+
+    item = etree.SubElement(manifest, _qualified_tag(manifest, "item"))
+    item.set("id", _ABOUT_PAGE_MANIFEST_ID)
+    item.set("href", _ABOUT_PAGE_FILENAME)
+    item.set("media-type", "application/xhtml+xml")
+
+    itemref = etree.SubElement(spine, _qualified_tag(spine, "itemref"))
+    itemref.set("idref", _ABOUT_PAGE_MANIFEST_ID)
+
+    try:
+        opf_item.content = _serialize_opf_document(tree)
+    except Exception as e:
+        _logger.warning(f"Could not serialize OPF file '{opf_path}', skipping about page: {e}")
+        return False
+
+    epub_item_files.append(_EpubItemFile(page_path, page_content))
+    _logger.info(f"Added IntelliReading about page to '{opf_path}'")
+    return True
+
+
+def _remove_about_page(epub_item_files: list[_EpubItemFile]) -> bool:
+    opf_path = _find_opf_path(epub_item_files)
+    if not opf_path:
+        _logger.warning("Could not determine the OPF path, cannot remove the IntelliReading about page")
+        return False
+
+    opf_item = _find_item_by_filename(epub_item_files, opf_path)
+    if opf_item is None:
+        _logger.warning(f"OPF file '{opf_path}' was not found in the EPUB, cannot remove the about page")
+        return False
+
+    try:
+        from lxml import etree
+
+        parser = etree.XMLParser(resolve_entities=False, load_dtd=False, no_network=True, remove_blank_text=False)
+        tree = etree.fromstring(opf_item.content, parser).getroottree()
+        opf_root = tree.getroot()
+    except Exception as e:
+        _logger.warning(f"Could not parse OPF file '{opf_path}', cannot remove the about page: {e}")
+        return False
+
+    opf_dir = posixpath.dirname(opf_path)
+    page_path = posixpath.join(opf_dir, _ABOUT_PAGE_FILENAME) if opf_dir else _ABOUT_PAGE_FILENAME
+    removed_paths = {page_path}
+    removed_ids: set[str] = set()
+    removed_opf_entries = False
+
+    manifest = _find_child_by_local_name(opf_root, "manifest")
+    if manifest is not None:
+        for item in list(manifest):
+            if _get_local_name(item) != "item":
+                continue
+            item_id = (item.get("id") or "").lower()
+            href = item.get("href") or ""
+            href_basename = _href_basename(href) if href else ""
+            if item_id == _ABOUT_PAGE_MANIFEST_ID.lower() or href_basename == _ABOUT_PAGE_FILENAME.lower():
+                if item_id:
+                    removed_ids.add(item_id)
+                removed_paths.update(_resolve_href_paths(opf_dir, href))
+                manifest.remove(item)
+                removed_opf_entries = True
+
+    spine = _find_child_by_local_name(opf_root, "spine")
+    if spine is not None:
+        for itemref in list(spine):
+            if _get_local_name(itemref) != "itemref":
+                continue
+            idref = (itemref.get("idref") or "").lower()
+            if idref in removed_ids or idref == _ABOUT_PAGE_MANIFEST_ID.lower():
+                spine.remove(itemref)
+                removed_opf_entries = True
+
+    if removed_opf_entries:
+        try:
+            opf_item.content = _serialize_opf_document(tree)
+        except Exception as e:
+            _logger.warning(f"Could not serialize OPF file '{opf_path}', cannot remove the about page: {e}")
+            return False
+
+    original_file_count = len(epub_item_files)
+    removed_paths_lower = {path.lower() for path in removed_paths}
+    about_page_filename = _ABOUT_PAGE_FILENAME.lower()
+    epub_item_files[:] = [
+        epub_item_file
+        for epub_item_file in epub_item_files
+        if not (
+            epub_item_file.filename
+            and (
+                epub_item_file.filename.lower() in removed_paths_lower
+                or posixpath.basename(epub_item_file.filename).lower() == about_page_filename
+            )
+        )
+    ]
+    removed_page_file = len(epub_item_files) != original_file_count
+
+    if removed_opf_entries or removed_page_file:
+        _logger.info(f"Removed IntelliReading about page from '{opf_path}'")
+        return True
+
+    _logger.debug(f"No IntelliReading about page found in '{opf_path}'")
+    return False
+
+
+def _get_epub_item_files_from_zip(input_zip: zipfile.ZipFile) -> list[_EpubItemFile]:
     def read_compressed_file(input_zip: zipfile.ZipFile, filename: str) -> _EpubItemFile:
         return _EpubItemFile(filename, input_zip.read(filename))
 
@@ -262,15 +638,15 @@ def _get_epub_item_files_from_zip(input_zip: zipfile.ZipFile) -> list:
 
 def _process_epub_item_files(
     epub_item_files: list[_EpubItemFile], *, remove_metaguiding: bool = False
-) -> Generator[_EpubItemFile, None, None]:
+) -> Generator[_EpubItemFile]:
     for epub_item_file in epub_item_files:
         _logger.debug(f"Processing file '{epub_item_file.filename}' remove_metaguiding={remove_metaguiding}")
         epub_item_file.metaguide(_metaguider, remove_metaguiding=remove_metaguiding)
         yield epub_item_file
 
 
-def _write_item_files_to_zip(epub_item_files, output_zip):
-    def write_compressed_file(output_zip: zipfile.ZipFile, epub_item_file: _EpubItemFile):
+def _write_item_files_to_zip(epub_item_files: list[_EpubItemFile], output_zip: zipfile.ZipFile) -> None:
+    def write_compressed_file(output_zip: zipfile.ZipFile, epub_item_file: _EpubItemFile) -> None:
         if epub_item_file.filename is None:
             msg = "EpubItemFile.filename is None"
             raise ValueError(msg)
@@ -283,14 +659,14 @@ def _write_item_files_to_zip(epub_item_files, output_zip):
         write_compressed_file(output_zip, _epub_item_file)
 
 
-def _ensure_file_exists(input_file: str):
+def _ensure_file_exists(input_file: str) -> None:
     if not os.path.isfile(input_file):
         exception_message = f"Input file '{input_file}' does not exist"
         _logger.error(exception_message)
         raise ValueError(exception_message)
 
 
-def _ensure_allowed_extension(input_file: str, extensions: list[str]):
+def _ensure_allowed_extension(input_file: str, extensions: list[str]) -> None:
     file_extension = os.path.splitext(input_file)[-1].upper()
     if file_extension not in extensions:
         exception_message = f"Input file '{input_file}' extension is not in {extensions}"
@@ -326,7 +702,13 @@ def _check_flag_file(
     return is_already_metaguided, flag_file
 
 
-def metaguide_epub_file(input_file: str, output_file: str, *, remove_metaguiding: bool = False):
+def metaguide_epub_file(
+    input_file: str,
+    output_file: str,
+    *,
+    remove_metaguiding: bool = False,
+    include_about_page: bool = True,
+) -> None:
     """Metaguide an epub file
     input_file: str
         The input epub file
@@ -334,6 +716,8 @@ def metaguide_epub_file(input_file: str, output_file: str, *, remove_metaguiding
         The output epub file
     remove_metaguiding: bool
         If True, removes metaguiding from the epub file
+    include_about_page: bool
+        If True, adds the IntelliReading about/donation page to the end of the epub
     """
 
     _logger.debug(f"Processing file '{input_file}' to output '{output_file}'")
@@ -342,17 +726,28 @@ def metaguide_epub_file(input_file: str, output_file: str, *, remove_metaguiding
 
     with open(input_file, "rb") as input_reader:
         input_file_stream = BytesIO(input_reader.read())
-        output_file_stream = metaguide_epub_stream(input_file_stream, remove_metaguiding=remove_metaguiding)
+        output_file_stream = metaguide_epub_stream(
+            input_file_stream,
+            remove_metaguiding=remove_metaguiding,
+            include_about_page=include_about_page,
+        )
         with open(output_file, "wb") as output_writer:
             output_writer.write(output_file_stream.read())
 
 
-def metaguide_epub_stream(input_stream: BytesIO, *, remove_metaguiding: bool = False) -> BytesIO:
+def metaguide_epub_stream(
+    input_stream: BytesIO,
+    *,
+    remove_metaguiding: bool = False,
+    include_about_page: bool = True,
+) -> BytesIO:
     """Metaguide an epub input stream
     input_file_stream: BytesIO
         The input epub file stream
     remove_metaguiding: bool
         If True, removes metaguiding from the epub file
+    include_about_page: bool
+        If True, adds the IntelliReading about/donation page to the end of the epub
     return: BytesIO
         The metaguided epub file stream
     """
@@ -385,10 +780,13 @@ def metaguide_epub_stream(input_stream: BytesIO, *, remove_metaguiding: bool = F
                 )
 
                 if remove_metaguiding:
-                    # remove the metaguided flag file
+                    # remove the about page and the metaguided flag file
+                    _remove_about_page(processed_item_files)
                     filtered_files = filter(lambda f: f.filename != _METAGUIDED_FLAG_FILENAME, processed_item_files)
                     processed_item_files = list(filtered_files)
                 else:
+                    if include_about_page:
+                        _inject_about_page(processed_item_files)
                     _logger.debug("Processing zip: Adding metaguided flag file")
                     flag_content = _generate_flag_file_content()
                     processed_item_files.append(_EpubItemFile(_METAGUIDED_FLAG_FILENAME, flag_content))
@@ -400,7 +798,7 @@ def metaguide_epub_stream(input_stream: BytesIO, *, remove_metaguiding: bool = F
     return output_stream
 
 
-def metaguide_xhtml_file(input_file: str, output_file: str, *, remove_metaguiding: bool = False):
+def metaguide_xhtml_file(input_file: str, output_file: str, *, remove_metaguiding: bool = False) -> None:
     """Metaguide an xhtml file
     input_file: str
         The input xhtml file
@@ -438,7 +836,13 @@ def metaguide_xhtml_stream(input_file_stream: BytesIO, *, remove_metaguiding: bo
     return output_file_stream
 
 
-def metaguide_dir(input_dir: str, output_dir: str, *, remove_metaguiding: bool = False):
+def metaguide_dir(
+    input_dir: str,
+    output_dir: str,
+    *,
+    remove_metaguiding: bool = False,
+    include_about_page: bool = True,
+) -> None:
     """Metaguides all epubs and xhtml found in a directory (recursively)
     input_dir: str
         The input epub/xhtml directory
@@ -446,11 +850,13 @@ def metaguide_dir(input_dir: str, output_dir: str, *, remove_metaguiding: bool =
         The output epub/xhtml directory
     remove_metaguiding: bool
         If True, removes metaguiding from the files
+    include_about_page: bool
+        If True, adds the IntelliReading about/donation page to the end of epub files
     """
 
     # get a list of all the files in the directory, and the child directories if recursive
     # verify if the file is a file and if it has the correct extension
-    def get_files(directory, recursive):
+    def get_files(directory: str, *, recursive: bool) -> Generator[str]:
         for filename in os.listdir(directory):
             input_filename = os.path.join(directory, filename)
 
@@ -458,7 +864,7 @@ def metaguide_dir(input_dir: str, output_dir: str, *, remove_metaguiding: bool =
             if os.path.isfile(input_filename) and (extension in _EPUB_EXTENSIONS or extension in _XHTML_EXTENSIONS):
                 yield input_filename
             elif os.path.isdir(input_filename) and recursive:
-                yield from get_files(input_filename, recursive)
+                yield from get_files(input_filename, recursive=recursive)
 
     _logger.info(f"Processing files in {input_dir} to {output_dir} (recursively)")
 
@@ -471,7 +877,7 @@ def metaguide_dir(input_dir: str, output_dir: str, *, remove_metaguiding: bool =
         _logger.info(f"Creating {output_dir}")
         os.makedirs(output_dir)
 
-    for input_filename in get_files(input_dir, True):
+    for input_filename in get_files(input_dir, recursive=True):
         output_filename = os.path.join(output_dir, os.path.basename(input_filename))
         _logger.debug(f"Processing {input_filename} to {output_filename}")
 
@@ -485,7 +891,11 @@ def metaguide_dir(input_dir: str, output_dir: str, *, remove_metaguiding: bool =
             with open(input_filename, "rb") as input_reader:
                 input_file_stream = BytesIO(input_reader.read())
                 if os.path.splitext(input_filename)[-1].upper() in _EPUB_EXTENSIONS:
-                    output_file_stream = metaguide_epub_stream(input_file_stream, remove_metaguiding=remove_metaguiding)
+                    output_file_stream = metaguide_epub_stream(
+                        input_file_stream,
+                        remove_metaguiding=remove_metaguiding,
+                        include_about_page=include_about_page,
+                    )
                 else:
                     output_file_stream = metaguide_xhtml_stream(
                         input_file_stream, remove_metaguiding=remove_metaguiding

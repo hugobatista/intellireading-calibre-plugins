@@ -24,6 +24,19 @@ This repo is part of the [Intellireading](https://go.hugobatista.com/intelliread
 
 **Metagu**iding **i**s **partic**ulary **use**ful **fo**r **peo**ple **wi**th **dysl**exia **o**r **ADH**D, **bu**t **i**t **ca**n **b**e **us**ed **b**y **any**one **wh**o **wan**ts **t**o **impr**ove **the**ir **read**ing **foc**us **an**d **spe**ed. **Fo**r **mo**re **inform**ation, **vis**it **th**e [**Intelli**reading **webs**ite.](https://go.hugobatista.com/intellireading)
 
+## IntelliReading about page
+
+By default, metaguided EPUBs include an IntelliReading about/donation page at the end. The page is added only when a book is metaguided for the first time; books that are already metaguided are copied unchanged.
+
+You can disable the page in the settings of each plugin:
+
+- **Epub Metaguider GUI (Interface Action)**: Preferences → Advanced → Plugins → EBook Metaguider (intellireading) → Customize plugin.
+- **Epub Metaguider post processor (FileType)**: Preferences → Advanced → Plugins → EPUB Metaguider - Post Processor (intellireading) → Customize plugin.
+- **Epub Metaguider output format (Output Format)**: when converting to EPUB, open the "Epub Output (metaguided)" section and uncheck "Add IntelliReading about/donation page".
+- **KoboTouch Metaguider (Device Interface)**: Configure device → Collections, covers && uploads → IntelliReading → uncheck "Add IntelliReading about/donation page".
+
+To remove the page from a book that was already metaguided, use "Remove metaguiding" and then metaguide the book again. "Remove metaguiding" always removes the about page, regardless of this setting.
+
 ## What is Calibre?
 **Cali**bre **i**s **a** **fr**ee **an**d **open-s**ource **e-b**ook **mana**ger. **I**t **i**s **us**ed **fo**r **catalo**ging, **conver**ting, **read**ing **an**d **sync**ing **e-bo**oks **wi**th **e-b**ook **rea**der **devi**ces. **I**t **i**s **prima**rily **a** **fr**ee **soft**ware **sui**te **devel**oped **b**y **use**rs **o**f **e-bo**oks **fo**r **use**rs **o**f **e-bo**oks.
 **Fo**r **mo**re **inform**ation, **vis**it **th**e [**Cal**ibre **webs**ite](https://calibre-ebook.com/).

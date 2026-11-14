@@ -48,6 +48,14 @@ class MetaguidedEpubOutput(EPUBOutput):
                 ]
             ),
         ),
+        OptionRecommendation(
+            name="epubmg_include_about_page",
+            recommended_value=True,
+            help=_(  # type: ignore # noqa
+                "Add an IntelliReading about/donation page at the end of the metaguided EPUB. "
+                "Disable this to keep the EPUB content unchanged."
+            ),
+        ),
     }
     epubmg_recommendations: Set[Tuple[str, Any, int]] = {("epub_version", "3", OptionRecommendation.LOW)}
 
@@ -79,7 +87,11 @@ class MetaguidedEpubOutput(EPUBOutput):
         if opts.epubmg_enable_metaguiding:
             common.log.debug("Running epubmg conversion")
             try:
-                metaguiding.metaguide_epub_file(output, output)
+                metaguiding.metaguide_epub_file(
+                    output,
+                    output,
+                    include_about_page=opts.epubmg_include_about_page,
+                )
             except Exception as e:
                 common.log.error(f"Error processing {self.name}: {e}")
                 raise

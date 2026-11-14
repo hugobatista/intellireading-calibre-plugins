@@ -28,7 +28,7 @@ class InterfacePluginWrapper(InterfaceActionBase):
     )
     supported_platforms = ["windows", "osx", "linux"]
     author = "Hugo Batista"
-    version = (2, 0, 5)
+    version = (2, 1, 0)
     minimum_calibre_version = (8, 4, 0)
 
     #: This field defines the GUI plugin class that contains all the code
@@ -42,7 +42,8 @@ class InterfacePluginWrapper(InterfaceActionBase):
     def customization_help(self, gui=False):
         return (
             "This plugin can be customized to change the default action when clicking the toolbar button. "
-            "You can choose whether clicking the button should create a metaguided epub or kepub file."
+            "You can choose whether clicking the button should create a metaguided epub or kepub file. "
+            "You can also disable the IntelliReading about/donation page added to metaguided EPUBs."
         )
 
     def save_settings(self, config_widget):

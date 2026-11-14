@@ -14,3 +14,4 @@ prefs = JSONConfig("plugins/metaguideinterface")
 
 # Set defaults
 prefs.defaults["default_action"] = "epub"  # can be 'epub' or 'kepub'
+prefs.defaults["include_about_page"] = True

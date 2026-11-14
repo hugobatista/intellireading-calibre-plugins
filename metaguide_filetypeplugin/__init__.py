@@ -22,7 +22,7 @@ class MetaguidedEpubFileType(FileTypePlugin):
     )
     supported_platforms = ["windows", "osx", "linux"]
     author = "Hugo Batista"
-    version = (2, 0, 5)
+    version = (2, 1, 0)
     file_types = set(["epub", "kepub"])
     minimum_calibre_version = (8, 4, 0)
 
@@ -43,6 +43,8 @@ class MetaguidedEpubFileType(FileTypePlugin):
             "epub": prefs["process_epub"],
             "kepub": prefs["process_kepub"],
         }
+
+        self.include_about_page = prefs["include_about_page"]
 
         super().__init__(*args, **kwargs)
 
@@ -67,7 +69,11 @@ class MetaguidedEpubFileType(FileTypePlugin):
         # (or something similar) to avoid conflicts
         _output_path = os.path.splitext(path_to_ebook)[0] + " (metaguided)" + os.path.splitext(path_to_ebook)[1]
         try:
-            metaguiding.metaguide_epub_file(path_to_ebook, _output_path)
+            metaguiding.metaguide_epub_file(
+                path_to_ebook,
+                _output_path,
+                include_about_page=self.include_about_page,
+            )
         except Exception as e:
             common.log.error(f"Error running {self.name} plugin: {e}")
             raise e
@@ -98,3 +104,4 @@ class MetaguidedEpubFileType(FileTypePlugin):
             "epub": prefs["process_epub"],
             "kepub": prefs["process_kepub"],
         }
+        self.include_about_page = prefs["include_about_page"]

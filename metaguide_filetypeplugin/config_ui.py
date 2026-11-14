@@ -58,6 +58,21 @@ class ConfigWidget(QWidget):
         file_group.setLayout(file_layout)
         self.layout.addWidget(file_group)
 
+        # EPUB content settings
+        content_group = QGroupBox("EPUB Content")
+        content_layout = QVBoxLayout()
+
+        self.about_page_checkbox = QCheckBox("Add IntelliReading about/donation page", self)
+        self.about_page_checkbox.setToolTip(
+            "Adds an IntelliReading about/donation page at the end of metaguided EPUBs. "
+            "Disable this to keep the EPUB content unchanged."
+        )
+        self.about_page_checkbox.setChecked(prefs["include_about_page"])
+        content_layout.addWidget(self.about_page_checkbox)
+
+        content_group.setLayout(content_layout)
+        self.layout.addWidget(content_group)
+
         # Add info label
         info_label = QLabel("Note: Changes will take effect after restarting Calibre")
         self.layout.addWidget(info_label)
@@ -73,3 +88,6 @@ class ConfigWidget(QWidget):
         # Save file type settings
         prefs["process_epub"] = self.epub_checkbox.isChecked()
         prefs["process_kepub"] = self.kepub_checkbox.isChecked()
+
+        # Save content settings
+        prefs["include_about_page"] = self.about_page_checkbox.isChecked()
