@@ -356,7 +356,9 @@ def _build_about_page(epub_version: str, tool_version: str = cli_version) -> byt
   <p><strong>Learn more:</strong><br/>
   <a href="{_WEBSITE_URL}"><b>{_WEBSITE_URL}</b></a></p>
   <hr/>
-  <p><small>This page was added automatically by IntelliReading Metaguiding.</small></p>
+  <p><small>This page was added automatically by IntelliReading Metaguiding.
+  You can turn off the about page in the options of the tool used to convert this EPUB.
+  Removing metaguiding also removes this page.</small></p>
 </body>
 </html>
 """.encode()
