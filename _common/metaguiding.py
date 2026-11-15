@@ -34,11 +34,52 @@ _FIXATION_RATIOS = {1: 0.30, 2: 0.40, 3: 0.50, 4: 0.60, 5: 0.70}
 FIXATION_LEVELS = tuple(sorted(_FIXATION_RATIOS))
 _THREE_LETTER_WORD_LENGTH = 3
 
+DEFAULT_BOLD_STYLE = "tag"
+BOLD_STYLES = ("tag", "shadow", "stroke")
+DEFAULT_BOLD_INTENSITY = 3
+BOLD_INTENSITIES = (1, 2, 3, 4, 5)
+_BOLD_CLASS_NAME = "ir-bold"
+_BOLD_STYLE_ELEMENT_ID = "intellireading-bold-style"
+_BOLD_SHADOW_OFFSETS = {1: 0.02, 2: 0.03, 3: 0.04, 4: 0.05, 5: 0.06}
+_BOLD_STROKE_WIDTHS = {1: 0.015, 2: 0.025, 3: 0.035, 4: 0.045, 5: 0.055}
+_ABOUT_PAGE_TITLE = "Thank you for using IntelliReading"
+
 
 def _validate_fixation(fixation: int) -> None:
     if isinstance(fixation, bool) or not isinstance(fixation, int) or fixation not in _FIXATION_RATIOS:
         msg = f"Invalid fixation level '{fixation}'. Valid levels are {FIXATION_LEVELS}"
         raise ValueError(msg)
+
+
+def _validate_bold_style(bold_style: str) -> None:
+    if not isinstance(bold_style, str) or bold_style not in BOLD_STYLES:
+        msg = f"Invalid bold style '{bold_style}'. Valid styles are {BOLD_STYLES}"
+        raise ValueError(msg)
+
+
+def _validate_bold_intensity(bold_intensity: int) -> None:
+    if (
+        isinstance(bold_intensity, bool)
+        or not isinstance(bold_intensity, int)
+        or bold_intensity not in _BOLD_SHADOW_OFFSETS
+    ):
+        msg = f"Invalid bold intensity '{bold_intensity}'. Valid intensities are {BOLD_INTENSITIES}"
+        raise ValueError(msg)
+
+
+def _bold_style_css(bold_style: str, bold_intensity: int) -> str | None:
+    if bold_style == "shadow":
+        offset = _BOLD_SHADOW_OFFSETS[bold_intensity]
+        return (
+            f"b.{_BOLD_CLASS_NAME} {{ font-weight: normal !important; "
+            f"text-shadow: {offset}em 0 0 currentColor, -{offset}em 0 0 currentColor; }}"
+        )
+    if bold_style == "stroke":
+        width = _BOLD_STROKE_WIDTHS[bold_intensity]
+        return (
+            f"b.{_BOLD_CLASS_NAME} {{ font-weight: normal !important; -webkit-text-stroke: {width}em currentColor; }}"
+        )
+    return None
 
 
 def _generate_flag_file_content() -> bytes:
@@ -92,10 +133,10 @@ class RegExBoldMetaguider:
 
     _body_regex = re.compile(r"<body[^>]*>(.*)</body>", re.DOTALL)
     _text_block_regex = re.compile(r"(?<!<b[^>]*)>[^\S]*[^\s<][^<]*[^\S\n]*<")
-    _bolded_text_block_regex = re.compile(r"<b>\b\w{1}\b</b>|<b>\b\w+\b</b>(?:\b\w+\b)")
+    _bolded_text_block_regex = re.compile(r"<b(?:\s[^>]*)?>\b\w{1}\b</b>|<b(?:\s[^>]*)?>\b\w+\b</b>(?:\b\w+\b)")
     _word_pattern_regex = re.compile(r"\b\w+\b", re.UNICODE)
     _entity_ref_regex = re.compile(r"(&[#a-zA-Z][a-zA-Z0-9]*;)")
-    _bolded_word_regex = re.compile(r"<b>(.*?)</b>")
+    _bolded_word_regex = re.compile(r"<b(?:\s[^>]*)?>(.*?)</b>")
     # The optional namespace prefix matches prefixed SVG elements; the (?<!/) guard skips
     # self-closing tags. Only the content is replaced, so text-node boundaries are preserved.
     _non_prose_region_regex = re.compile(
@@ -110,10 +151,21 @@ class RegExBoldMetaguider:
     _non_prose_sentinel = "\x00\x01"
     _non_prose_sentinel_regex = re.compile(r"\x00\x01")
 
-    def __init__(self, fallback_encoding: str = "utf-8", *, fixation: int = DEFAULT_FIXATION) -> None:
+    def __init__(
+        self,
+        fallback_encoding: str = "utf-8",
+        *,
+        fixation: int = DEFAULT_FIXATION,
+        bold_style: str = DEFAULT_BOLD_STYLE,
+        bold_intensity: int = DEFAULT_BOLD_INTENSITY,
+    ) -> None:
         _validate_fixation(fixation)
+        _validate_bold_style(bold_style)
+        _validate_bold_intensity(bold_intensity)
         self._fallback_encoding = fallback_encoding
         self._fixation = fixation
+        self._bold_style = bold_style
+        self._bold_intensity = bold_intensity
         self._bold_ratio = _FIXATION_RATIOS[fixation]
 
     def _bold_word(self, word: str) -> str:
@@ -131,7 +183,9 @@ class RegExBoldMetaguider:
         if word_length > 1:
             # always leave at least one character unbolded
             bold_length = min(bold_length, word_length - 1)
-        return f"<b>{word[:bold_length]}</b>{word[bold_length:]}"  # Bold the first part of the word
+        if self._bold_style == "tag":
+            return f"<b>{word[:bold_length]}</b>{word[bold_length:]}"
+        return f'<b class="{_BOLD_CLASS_NAME}">{word[:bold_length]}</b>{word[bold_length:]}'
 
     def _unbold_word(self, word: str) -> str:
         # if the word is an empty string, whitespace or new line, return it
@@ -139,7 +193,7 @@ class RegExBoldMetaguider:
             return word
 
         # short-circuit if the word is not bolded
-        if "<b>" not in word:
+        if "<b" not in word:
             return word
 
         # remove the <b></b> tags
@@ -302,12 +356,38 @@ class RegExBoldMetaguider:
 
         return encoding or self._fallback_encoding
 
+    def _inject_bold_style_css(self, html: str) -> str:
+        if self._bold_style == "tag" or _BOLD_STYLE_ELEMENT_ID in html:
+            return html
+        css = _bold_style_css(self._bold_style, self._bold_intensity)
+        if not css:
+            return html
+        style_element = f'<style type="text/css" id="{_BOLD_STYLE_ELEMENT_ID}">{css}</style>'
+        if "</head>" in html:
+            return html.replace("</head>", f"{style_element}</head>", 1)
+        body_match = re.search(r"<body[^>]*>", html, re.IGNORECASE)
+        if body_match is not None:
+            return html[: body_match.start()] + style_element + html[body_match.start() :]
+        return html + style_element
+
+    def _remove_bold_style_css(self, html: str) -> str:
+        return re.sub(
+            rf'<style[^>]*id="{re.escape(_BOLD_STYLE_ELEMENT_ID)}"[^>]*>.*?</style>',
+            "",
+            html,
+            flags=re.DOTALL,
+        )
+
     def metaguide_xhtml_document(self, xhtml_document: bytes, *, remove_metaguiding: bool = False) -> bytes:
         # if none of the methods to detect the encoding work, use utf-8
         encoding = self._get_encoding(xhtml_document) or "utf-8"
 
         html = xhtml_document.decode(encoding)
         bolded_html = self._bold_document(html, remove_metaguiding=remove_metaguiding)
+        if remove_metaguiding:
+            bolded_html = self._remove_bold_style_css(bolded_html)
+        else:
+            bolded_html = self._inject_bold_style_css(bolded_html)
         return bolded_html.encode(encoding)
 
 
@@ -561,6 +641,237 @@ def _serialize_opf_document(tree: Any) -> bytes:
     )
 
 
+def _find_manifest_item_path(
+    epub_item_files: list[_EpubItemFile],
+    manifest: Any,
+    opf_dir: str,
+    *,
+    property_name: str | None = None,
+    media_type: str | None = None,
+) -> _EpubItemFile | None:
+    for item in manifest:
+        if _get_local_name(item) != "item":
+            continue
+        href = item.get("href")
+        if not href:
+            continue
+        if property_name is not None and property_name not in (item.get("properties") or "").split():
+            continue
+        if media_type is not None and item.get("media-type") != media_type:
+            continue
+        candidates = _resolve_href_paths(opf_dir, href)
+        epub_item_file = next((f for f in epub_item_files if f.filename in candidates), None)
+        if epub_item_file is not None:
+            return epub_item_file
+    return None
+
+
+def _toc_href(toc_filename: str, target_filename: str) -> str:
+    toc_dir = posixpath.dirname(toc_filename) or "."
+    return posixpath.relpath(target_filename, toc_dir)
+
+
+def _add_about_page_to_nav(nav_item: _EpubItemFile, page_path: str) -> bool:
+    try:
+        from lxml import etree
+
+        parser = etree.XMLParser(resolve_entities=False, load_dtd=False, no_network=True, remove_blank_text=False)
+        tree = etree.fromstring(nav_item.content, parser).getroottree()
+        nav_root = tree.getroot()
+    except Exception as e:
+        _logger.warning(f"Could not parse navigation document '{nav_item.filename}': {e}")
+        return False
+
+    if nav_root.get(_XML_BASE_ATTRIBUTE):
+        _logger.warning(f"Navigation document '{nav_item.filename}' uses xml:base, skipping ToC update")
+        return False
+
+    toc_nav = None
+    for element in nav_root.iter():
+        if _get_local_name(element) != "nav":
+            continue
+        epub_type = element.get("{http://www.idpf.org/2007/ops}type") or element.get("type") or ""
+        if "toc" in epub_type.split():
+            toc_nav = element
+            break
+    if toc_nav is None:
+        toc_nav = next((element for element in nav_root.iter() if _get_local_name(element) == "nav"), None)
+    if toc_nav is None:
+        _logger.warning(f"Navigation document '{nav_item.filename}' has no <nav>, skipping ToC update")
+        return False
+
+    toc_list = next(
+        (child for child in toc_nav if _get_local_name(child) in ("ol", "ul")),
+        None,
+    )
+    if toc_list is None:
+        _logger.warning(f"Navigation document '{nav_item.filename}' has no <ol>, skipping ToC update")
+        return False
+
+    about_page_filename = _ABOUT_PAGE_FILENAME.lower()
+    for link in toc_list.iter():
+        if _get_local_name(link) != "a":
+            continue
+        href = link.get("href")
+        if href and _href_basename(href) == about_page_filename:
+            _logger.debug(f"About page is already listed in '{nav_item.filename}'")
+            return False
+
+    li = etree.SubElement(toc_list, _qualified_tag(toc_list, "li"))
+    link = etree.SubElement(li, _qualified_tag(toc_list, "a"))
+    link.set("href", _toc_href(nav_item.filename or "", page_path))
+    link.text = _ABOUT_PAGE_TITLE
+    nav_item.content = _serialize_opf_document(tree)
+    _logger.info(f"Added about page to navigation document '{nav_item.filename}'")
+    return True
+
+
+def _add_about_page_to_ncx(ncx_item: _EpubItemFile, page_path: str) -> bool:
+    try:
+        from lxml import etree
+
+        parser = etree.XMLParser(resolve_entities=False, load_dtd=False, no_network=True, remove_blank_text=False)
+        tree = etree.fromstring(ncx_item.content, parser).getroottree()
+        ncx_root = tree.getroot()
+    except Exception as e:
+        _logger.warning(f"Could not parse NCX document '{ncx_item.filename}': {e}")
+        return False
+
+    if ncx_root.get(_XML_BASE_ATTRIBUTE):
+        _logger.warning(f"NCX document '{ncx_item.filename}' uses xml:base, skipping ToC update")
+        return False
+
+    nav_map = next((element for element in ncx_root.iter() if _get_local_name(element) == "navMap"), None)
+    if nav_map is None:
+        _logger.warning(f"NCX document '{ncx_item.filename}' has no <navMap>, skipping ToC update")
+        return False
+
+    about_page_filename = _ABOUT_PAGE_FILENAME.lower()
+    for content in nav_map.iter():
+        if _get_local_name(content) != "content":
+            continue
+        src = content.get("src")
+        if src and _href_basename(src) == about_page_filename:
+            _logger.debug(f"About page is already listed in '{ncx_item.filename}'")
+            return False
+
+    play_order = 1
+    for nav_point in nav_map.iter():
+        if _get_local_name(nav_point) != "navPoint":
+            continue
+        try:
+            play_order = max(play_order, int(nav_point.get("playOrder", "0")) + 1)
+        except (TypeError, ValueError):
+            continue
+
+    nav_point = etree.SubElement(nav_map, _qualified_tag(nav_map, "navPoint"))
+    nav_point.set("id", _ABOUT_PAGE_MANIFEST_ID)
+    nav_point.set("playOrder", str(play_order))
+    nav_label = etree.SubElement(nav_point, _qualified_tag(nav_map, "navLabel"))
+    text = etree.SubElement(nav_label, _qualified_tag(nav_map, "text"))
+    text.text = _ABOUT_PAGE_TITLE
+    content = etree.SubElement(nav_point, _qualified_tag(nav_map, "content"))
+    content.set("src", _toc_href(ncx_item.filename or "", page_path))
+    ncx_item.content = _serialize_opf_document(tree)
+    _logger.info(f"Added about page to NCX document '{ncx_item.filename}'")
+    return True
+
+
+def _add_about_page_to_toc(epub_item_files: list[_EpubItemFile], manifest: Any, opf_dir: str, page_path: str) -> bool:
+    updated = False
+    nav_item = _find_manifest_item_path(epub_item_files, manifest, opf_dir, property_name="nav")
+    if nav_item is not None:
+        updated = _add_about_page_to_nav(nav_item, page_path) or updated
+    ncx_item = _find_manifest_item_path(epub_item_files, manifest, opf_dir, media_type="application/x-dtbncx+xml")
+    if ncx_item is not None:
+        updated = _add_about_page_to_ncx(ncx_item, page_path) or updated
+    return updated
+
+
+def _remove_about_page_from_nav(nav_item: _EpubItemFile) -> bool:
+    try:
+        from lxml import etree
+
+        parser = etree.XMLParser(resolve_entities=False, load_dtd=False, no_network=True, remove_blank_text=False)
+        tree = etree.fromstring(nav_item.content, parser).getroottree()
+        nav_root = tree.getroot()
+    except Exception as e:
+        _logger.warning(f"Could not parse navigation document '{nav_item.filename}': {e}")
+        return False
+
+    if nav_root.get(_XML_BASE_ATTRIBUTE):
+        return False
+
+    about_page_filename = _ABOUT_PAGE_FILENAME.lower()
+    removed = False
+    for link in list(nav_root.iter()):
+        if _get_local_name(link) != "a":
+            continue
+        href = link.get("href")
+        if not href or _href_basename(href) != about_page_filename:
+            continue
+        parent = link.getparent()
+        if parent is None:
+            continue
+        if _get_local_name(parent) == "li" and parent.getparent() is not None:
+            parent.getparent().remove(parent)
+        else:
+            parent.remove(link)
+        removed = True
+
+    if removed:
+        nav_item.content = _serialize_opf_document(tree)
+        _logger.info(f"Removed about page from navigation document '{nav_item.filename}'")
+    return removed
+
+
+def _remove_about_page_from_ncx(ncx_item: _EpubItemFile) -> bool:
+    try:
+        from lxml import etree
+
+        parser = etree.XMLParser(resolve_entities=False, load_dtd=False, no_network=True, remove_blank_text=False)
+        tree = etree.fromstring(ncx_item.content, parser).getroottree()
+        ncx_root = tree.getroot()
+    except Exception as e:
+        _logger.warning(f"Could not parse NCX document '{ncx_item.filename}': {e}")
+        return False
+
+    if ncx_root.get(_XML_BASE_ATTRIBUTE):
+        return False
+
+    about_page_filename = _ABOUT_PAGE_FILENAME.lower()
+    removed = False
+    for nav_point in list(ncx_root.iter()):
+        if _get_local_name(nav_point) != "navPoint":
+            continue
+        content = next((child for child in nav_point if _get_local_name(child) == "content"), None)
+        if content is None:
+            continue
+        src = content.get("src")
+        if not src or _href_basename(src) != about_page_filename:
+            continue
+        parent = nav_point.getparent()
+        if parent is not None:
+            parent.remove(nav_point)
+            removed = True
+
+    if removed:
+        ncx_item.content = _serialize_opf_document(tree)
+        _logger.info(f"Removed about page from NCX document '{ncx_item.filename}'")
+    return removed
+
+
+def _remove_about_page_from_toc(epub_item_files: list[_EpubItemFile], manifest: Any, opf_dir: str) -> bool:
+    updated = False
+    nav_item = _find_manifest_item_path(epub_item_files, manifest, opf_dir, property_name="nav")
+    if nav_item is not None:
+        updated = _remove_about_page_from_nav(nav_item) or updated
+    ncx_item = _find_manifest_item_path(epub_item_files, manifest, opf_dir, media_type="application/x-dtbncx+xml")
+    if ncx_item is not None:
+        updated = _remove_about_page_from_ncx(ncx_item) or updated
+    return updated
+
+
 def _inject_about_page(epub_item_files: list[_EpubItemFile], metaguider: RegExBoldMetaguider) -> bool:
     opf_path = _find_opf_path(epub_item_files)
     if not opf_path:
@@ -626,6 +937,11 @@ def _inject_about_page(epub_item_files: list[_EpubItemFile], metaguider: RegExBo
         _logger.warning(f"Could not serialize OPF file '{opf_path}', skipping about page: {e}")
         return False
 
+    try:
+        _add_about_page_to_toc(epub_item_files, manifest, opf_dir, page_path)
+    except Exception as e:
+        _logger.warning(f"Could not add the about page to the ToC: {e}")
+
     epub_item_files.append(_EpubItemFile(page_path, page_content))
     _logger.info(f"Added IntelliReading about page to '{opf_path}'")
     return True
@@ -690,6 +1006,10 @@ def _remove_about_page(epub_item_files: list[_EpubItemFile]) -> bool:
             _logger.warning(f"Could not serialize OPF file '{opf_path}', cannot remove the about page: {e}")
             return False
 
+    removed_toc_entries = (
+        _remove_about_page_from_toc(epub_item_files, manifest, opf_dir) if manifest is not None else False
+    )
+
     original_file_count = len(epub_item_files)
     removed_paths_lower = {path.lower() for path in removed_paths}
     about_page_filename = _ABOUT_PAGE_FILENAME.lower()
@@ -706,7 +1026,7 @@ def _remove_about_page(epub_item_files: list[_EpubItemFile]) -> bool:
     ]
     removed_page_file = len(epub_item_files) != original_file_count
 
-    if removed_opf_entries or removed_page_file:
+    if removed_opf_entries or removed_page_file or removed_toc_entries:
         _logger.info(f"Removed IntelliReading about page from '{opf_path}'")
         return True
 
@@ -796,6 +1116,8 @@ def metaguide_epub_file(
     remove_metaguiding: bool = False,
     include_about_page: bool = True,
     fixation: int = DEFAULT_FIXATION,
+    bold_style: str = DEFAULT_BOLD_STYLE,
+    bold_intensity: int = DEFAULT_BOLD_INTENSITY,
 ) -> None:
     """Metaguide an epub file
     input_file: str
@@ -808,6 +1130,12 @@ def metaguide_epub_file(
         If True, adds the IntelliReading about/donation page to the end of the epub
     fixation: int
         How much of each word is bolded, from 1 (least) to 5 (most). Defaults to 3
+    bold_style: str
+        How to render the bold emphasis: 'tag' uses the font's bold face,
+        'shadow' and 'stroke' keep the original font metrics. Defaults to 'tag'
+    bold_intensity: int
+        How strong the visual bold effect is, from 1 (subtle) to 5 (strongest).
+        Only applies to the 'shadow' and 'stroke' styles. Defaults to 3
     """
 
     _logger.debug(f"Processing file '{input_file}' to output '{output_file}'")
@@ -821,6 +1149,8 @@ def metaguide_epub_file(
             remove_metaguiding=remove_metaguiding,
             include_about_page=include_about_page,
             fixation=fixation,
+            bold_style=bold_style,
+            bold_intensity=bold_intensity,
         )
         with open(output_file, "wb") as output_writer:
             output_writer.write(output_file_stream.read())
@@ -832,6 +1162,8 @@ def metaguide_epub_stream(
     remove_metaguiding: bool = False,
     include_about_page: bool = True,
     fixation: int = DEFAULT_FIXATION,
+    bold_style: str = DEFAULT_BOLD_STYLE,
+    bold_intensity: int = DEFAULT_BOLD_INTENSITY,
 ) -> BytesIO:
     """Metaguide an epub input stream
     input_file_stream: BytesIO
@@ -842,11 +1174,17 @@ def metaguide_epub_stream(
         If True, adds the IntelliReading about/donation page to the end of the epub
     fixation: int
         How much of each word is bolded, from 1 (least) to 5 (most). Defaults to 3
+    bold_style: str
+        How to render the bold emphasis: 'tag' uses the font's bold face,
+        'shadow' and 'stroke' keep the original font metrics. Defaults to 'tag'
+    bold_intensity: int
+        How strong the visual bold effect is, from 1 (subtle) to 5 (strongest).
+        Only applies to the 'shadow' and 'stroke' styles. Defaults to 3
     return: BytesIO
         The metaguided epub file stream
     """
     output_stream = BytesIO()
-    metaguider = RegExBoldMetaguider(fixation=fixation)
+    metaguider = RegExBoldMetaguider(fixation=fixation, bold_style=bold_style, bold_intensity=bold_intensity)
 
     if remove_metaguiding:
         _logger.debug("Removing metaguiding from epub")
@@ -896,7 +1234,13 @@ def metaguide_epub_stream(
 
 
 def metaguide_xhtml_file(
-    input_file: str, output_file: str, *, remove_metaguiding: bool = False, fixation: int = DEFAULT_FIXATION
+    input_file: str,
+    output_file: str,
+    *,
+    remove_metaguiding: bool = False,
+    fixation: int = DEFAULT_FIXATION,
+    bold_style: str = DEFAULT_BOLD_STYLE,
+    bold_intensity: int = DEFAULT_BOLD_INTENSITY,
 ) -> None:
     """Metaguide an xhtml file
     input_file: str
@@ -907,6 +1251,12 @@ def metaguide_xhtml_file(
         If True, removes metaguiding from the xhtml file
     fixation: int
         How much of each word is bolded, from 1 (least) to 5 (most). Defaults to 3
+    bold_style: str
+        How to render the bold emphasis: 'tag' uses the font's bold face,
+        'shadow' and 'stroke' keep the original font metrics. Defaults to 'tag'
+    bold_intensity: int
+        How strong the visual bold effect is, from 1 (subtle) to 5 (strongest).
+        Only applies to the 'shadow' and 'stroke' styles. Defaults to 3
     """
     _logger.debug(f"Processing file '{input_file}' to output '{output_file}'")
     _ensure_file_exists(input_file)
@@ -915,7 +1265,11 @@ def metaguide_xhtml_file(
     with open(input_file, "rb") as input_reader:
         input_file_stream = BytesIO(input_reader.read())
         output_file_stream = metaguide_xhtml_stream(
-            input_file_stream, remove_metaguiding=remove_metaguiding, fixation=fixation
+            input_file_stream,
+            remove_metaguiding=remove_metaguiding,
+            fixation=fixation,
+            bold_style=bold_style,
+            bold_intensity=bold_intensity,
         )
     output_file_stream.seek(0)
     with open(output_file, "wb") as output_writer:
@@ -923,7 +1277,12 @@ def metaguide_xhtml_file(
 
 
 def metaguide_xhtml_stream(
-    input_file_stream: BytesIO, *, remove_metaguiding: bool = False, fixation: int = DEFAULT_FIXATION
+    input_file_stream: BytesIO,
+    *,
+    remove_metaguiding: bool = False,
+    fixation: int = DEFAULT_FIXATION,
+    bold_style: str = DEFAULT_BOLD_STYLE,
+    bold_intensity: int = DEFAULT_BOLD_INTENSITY,
 ) -> BytesIO:
     """Metaguide an xhtml input stream
     input_file_stream: BytesIO
@@ -932,10 +1291,16 @@ def metaguide_xhtml_stream(
         If True, removes metaguiding from the xhtml file
     fixation: int
         How much of each word is bolded, from 1 (least) to 5 (most). Defaults to 3
+    bold_style: str
+        How to render the bold emphasis: 'tag' uses the font's bold face,
+        'shadow' and 'stroke' keep the original font metrics. Defaults to 'tag'
+    bold_intensity: int
+        How strong the visual bold effect is, from 1 (subtle) to 5 (strongest).
+        Only applies to the 'shadow' and 'stroke' styles. Defaults to 3
     return: BytesIO
         The metaguided xhtml file stream
     """
-    metaguider = RegExBoldMetaguider(fixation=fixation)
+    metaguider = RegExBoldMetaguider(fixation=fixation, bold_style=bold_style, bold_intensity=bold_intensity)
     output_file_stream = BytesIO()
     output_file_stream.write(
         metaguider.metaguide_xhtml_document(input_file_stream.read(), remove_metaguiding=remove_metaguiding)
@@ -951,6 +1316,8 @@ def metaguide_dir(
     remove_metaguiding: bool = False,
     include_about_page: bool = True,
     fixation: int = DEFAULT_FIXATION,
+    bold_style: str = DEFAULT_BOLD_STYLE,
+    bold_intensity: int = DEFAULT_BOLD_INTENSITY,
 ) -> None:
     """Metaguides all epubs and xhtml found in a directory (recursively)
     input_dir: str
@@ -963,9 +1330,17 @@ def metaguide_dir(
         If True, adds the IntelliReading about/donation page to the end of epub files
     fixation: int
         How much of each word is bolded, from 1 (least) to 5 (most). Defaults to 3
+    bold_style: str
+        How to render the bold emphasis: 'tag' uses the font's bold face,
+        'shadow' and 'stroke' keep the original font metrics. Defaults to 'tag'
+    bold_intensity: int
+        How strong the visual bold effect is, from 1 (subtle) to 5 (strongest).
+        Only applies to the 'shadow' and 'stroke' styles. Defaults to 3
     """
 
     _validate_fixation(fixation)
+    _validate_bold_style(bold_style)
+    _validate_bold_intensity(bold_intensity)
 
     # get a list of all the files in the directory, and the child directories if recursive
     # verify if the file is a file and if it has the correct extension
@@ -1009,10 +1384,16 @@ def metaguide_dir(
                         remove_metaguiding=remove_metaguiding,
                         include_about_page=include_about_page,
                         fixation=fixation,
+                        bold_style=bold_style,
+                        bold_intensity=bold_intensity,
                     )
                 else:
                     output_file_stream = metaguide_xhtml_stream(
-                        input_file_stream, remove_metaguiding=remove_metaguiding, fixation=fixation
+                        input_file_stream,
+                        remove_metaguiding=remove_metaguiding,
+                        fixation=fixation,
+                        bold_style=bold_style,
+                        bold_intensity=bold_intensity,
                     )
                 with open(output_filename, "wb") as output_writer:
                     output_writer.write(output_file_stream.read())
