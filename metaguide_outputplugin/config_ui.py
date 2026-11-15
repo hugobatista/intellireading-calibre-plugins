@@ -11,7 +11,7 @@ from calibre.gui2.convert.epub_output import PluginWidget as EPUBPluginWidget
 from calibre.gui2.convert.epub_output_ui import Ui_Form as EPUBUIForm
 
 from calibre_plugins.metaguideoutput import common
-from calibre_plugins.metaguideoutput.metaguiding import FIXATION_LEVELS
+from calibre_plugins.metaguideoutput.metaguiding import BOLD_INTENSITIES, BOLD_STYLES, FIXATION_LEVELS
 
 
 class PluginWidget(EPUBPluginWidget, EPUBUIForm):
@@ -35,7 +35,13 @@ class PluginWidget(EPUBPluginWidget, EPUBUIForm):
             self,
             parent,
             OPTIONS["output"].get("epub", tuple())
-            + ("epubmg_enable_metaguiding", "epubmg_include_about_page", "epubmg_fixation"),
+            + (
+                "epubmg_enable_metaguiding",
+                "epubmg_include_about_page",
+                "epubmg_fixation",
+                "epubmg_bold_style",
+                "epubmg_bold_intensity",
+            ),
         )
         self.opt_no_svg_cover.toggle()
         self.opt_no_svg_cover.toggle()
@@ -43,6 +49,7 @@ class PluginWidget(EPUBPluginWidget, EPUBUIForm):
         self.opt_epub_version.addItems(list(_ev.option.choices))
         self.db, self.book_id = db, book_id
         self.initialize_options(get_option, get_help, db, book_id)
+        self._update_bold_intensity_enabled()
 
     def setupUi(self, Form):  # noqa: N802, N803
         """Set up the plugin widget UI."""
@@ -102,8 +109,60 @@ class PluginWidget(EPUBPluginWidget, EPUBUIForm):
 
         _rows += 1
 
+        # epubmg_bold_style
+        self.opt_epubmg_bold_style_label = QtWidgets.QLabel(_("Bold style") + ":", Form)  # type: ignore # noqa
+        self.gridLayout.addWidget(self.opt_epubmg_bold_style_label, _rows, 0, 1, 1)
+
+        self.opt_epubmg_bold_style = QtWidgets.QComboBox(Form)
+        self.opt_epubmg_bold_style.setObjectName("opt_epubmg_bold_style")
+        self.opt_epubmg_bold_style.addItems(list(BOLD_STYLES))
+        self.opt_epubmg_bold_style.setToolTip(
+            _(  # type: ignore # noqa
+                "How to render the bold emphasis. 'tag' uses the real bold font; "
+                "'shadow' and 'stroke' keep the original font metrics and avoid page count changes "
+                "on Kobo kepubs. Default: tag."
+            )
+        )
+        self.gridLayout.addWidget(self.opt_epubmg_bold_style, _rows, 1, 1, 1)
+
+        self.opt_epubmg_enable_metaguiding.toggled.connect(self.opt_epubmg_bold_style_label.setEnabled)
+        self.opt_epubmg_enable_metaguiding.toggled.connect(self.opt_epubmg_bold_style.setEnabled)
+        self.opt_epubmg_bold_style_label.setEnabled(self.opt_epubmg_enable_metaguiding.isChecked())
+        self.opt_epubmg_bold_style.setEnabled(self.opt_epubmg_enable_metaguiding.isChecked())
+
+        _rows += 1
+
+        # epubmg_bold_intensity
+        self.opt_epubmg_bold_intensity_label = QtWidgets.QLabel(_("Bold intensity") + ":", Form)  # type: ignore # noqa
+        self.gridLayout.addWidget(self.opt_epubmg_bold_intensity_label, _rows, 0, 1, 1)
+
+        self.opt_epubmg_bold_intensity = QtWidgets.QComboBox(Form)
+        self.opt_epubmg_bold_intensity.setObjectName("opt_epubmg_bold_intensity")
+        self.opt_epubmg_bold_intensity.addItems([str(level) for level in BOLD_INTENSITIES])
+        self.opt_epubmg_bold_intensity.setToolTip(
+            _(  # type: ignore # noqa
+                "How strong the visual bold effect is: 1 = subtle, 5 = strongest. "
+                "Only applies to the 'shadow' and 'stroke' styles. Default: 3."
+            )
+        )
+        self.gridLayout.addWidget(self.opt_epubmg_bold_intensity, _rows, 1, 1, 1)
+
+        self.opt_epubmg_enable_metaguiding.toggled.connect(self._update_bold_intensity_enabled)
+        self.opt_epubmg_bold_style.currentTextChanged.connect(self._update_bold_intensity_enabled)
+        self._update_bold_intensity_enabled()
+
+        _rows += 1
+
         self.gridLayout.addItem(spacer, _rows, 0, 1, 1)
 
         # Copy from calibre.gui2.convert.epub_output_ui.Ui_Form to make the
         # new additions work
         QtCore.QMetaObject.connectSlotsByName(Form)
+
+    def _update_bold_intensity_enabled(self, *_args: object) -> None:
+        enabled = (
+            self.opt_epubmg_enable_metaguiding.isChecked()
+            and self.opt_epubmg_bold_style.currentText() != "tag"
+        )
+        self.opt_epubmg_bold_intensity_label.setEnabled(enabled)
+        self.opt_epubmg_bold_intensity.setEnabled(enabled)

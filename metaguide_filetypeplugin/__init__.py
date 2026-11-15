@@ -46,6 +46,8 @@ class MetaguidedEpubFileType(FileTypePlugin):
 
         self.include_about_page = prefs["include_about_page"]
         self.fixation = int(prefs["fixation"])
+        self.bold_style = prefs["bold_style"]
+        self.bold_intensity = int(prefs["bold_intensity"])
 
         super().__init__(*args, **kwargs)
 
@@ -75,6 +77,8 @@ class MetaguidedEpubFileType(FileTypePlugin):
                 _output_path,
                 include_about_page=self.include_about_page,
                 fixation=self.fixation,
+                bold_style=self.bold_style,
+                bold_intensity=self.bold_intensity,
             )
         except Exception as e:
             common.log.error(f"Error running {self.name} plugin: {e}")
@@ -108,3 +112,5 @@ class MetaguidedEpubFileType(FileTypePlugin):
         }
         self.include_about_page = prefs["include_about_page"]
         self.fixation = int(prefs["fixation"])
+        self.bold_style = prefs["bold_style"]
+        self.bold_intensity = int(prefs["bold_intensity"])

@@ -64,6 +64,25 @@ class MetaguidedEpubOutput(EPUBOutput):
                 "How much of each word is bolded: 1 = least bold, 5 = most bold. Default: 3."
             ),
         ),
+        OptionRecommendation(
+            name="epubmg_bold_style",
+            recommended_value=metaguiding.DEFAULT_BOLD_STYLE,
+            choices=metaguiding.BOLD_STYLES,
+            help=_(  # type: ignore # noqa
+                "How to render the bold emphasis: 'tag' uses the real bold font; 'shadow' and "
+                "'stroke' keep the original font metrics and avoid page count changes on Kobo kepubs. "
+                "Default: tag."
+            ),
+        ),
+        OptionRecommendation(
+            name="epubmg_bold_intensity",
+            recommended_value=str(metaguiding.DEFAULT_BOLD_INTENSITY),
+            choices=tuple(str(level) for level in metaguiding.BOLD_INTENSITIES),
+            help=_(  # type: ignore # noqa
+                "How strong the visual bold effect is: 1 = subtle, 5 = strongest. "
+                "Only applies to the 'shadow' and 'stroke' styles. Default: 3."
+            ),
+        ),
     }
     epubmg_recommendations: Set[Tuple[str, Any, int]] = {("epub_version", "3", OptionRecommendation.LOW)}
 
@@ -100,6 +119,8 @@ class MetaguidedEpubOutput(EPUBOutput):
                     output,
                     include_about_page=opts.epubmg_include_about_page,
                     fixation=int(opts.epubmg_fixation),
+                    bold_style=opts.epubmg_bold_style,
+                    bold_intensity=int(opts.epubmg_bold_intensity),
                 )
             except Exception as e:
                 common.log.error(f"Error processing {self.name}: {e}")

@@ -50,6 +50,38 @@ You can change it in the settings of each plugin:
 
 The fixation level applies only to new conversions. EPUB files that are already metaguided are copied unchanged; use "Remove metaguiding" and then metaguide the book again to apply a different level. Standalone XHTML files have no metaguided marker, so avoid running metaguiding twice on the same file.
 
+## Bold style
+
+The bold style controls how the bold part of each word is rendered. The default is **Real bold**, which keeps the historical behaviour.
+
+- **Real bold (tag)** — uses `<b>` and the font's bold face. This is the default.
+- **Visual bold — shadow (same layout)** — uses `<b class="ir-bold">` plus a CSS `text-shadow`. The text keeps the original font metrics, so line breaks and page counts stay close to the original.
+- **Visual bold — stroke (same layout)** — uses `<b class="ir-bold">` plus a CSS `-webkit-text-stroke`. It also keeps the original font metrics.
+
+The visual modes are intended for Kobo kepubs and other WebKit-based readers. They avoid the page count changes that real bold can cause on a Kobo, because the text keeps the same width and line breaks. On readers that do not support those CSS properties, the text may render without emphasis; use **Real bold** for maximum compatibility. In particular, Kobo EPUB files (the Adobe/RMSDK renderer) may ignore the visual modes.
+
+You can change the bold style in the settings of each plugin:
+
+- **Epub Metaguider GUI (Interface Action)**: Preferences → Advanced → Plugins → EBook Metaguider (intellireading) → Customize plugin → Bold style.
+- **Epub Metaguider post processor (FileType)**: Preferences → Advanced → Plugins → EPUB Metaguider - Post Processor (intellireading) → Customize plugin → Bold style.
+- **Epub Metaguider output format (Output Format)**: when converting to EPUB, open the "Epub Output (metaguided)" section and choose a Bold style.
+- **KoboTouch Metaguider (Device Interface)**: Configure device → Collections, covers && uploads → IntelliReading → Bold style.
+
+The bold style applies only to new conversions. EPUB files that are already metaguided are copied unchanged; use "Remove metaguiding" and then metaguide the book again to apply a different style.
+
+### Bold intensity
+
+When the bold style is **Visual bold — shadow** or **Visual bold — stroke**, the **Bold intensity** setting controls how strong the effect is. It ranges from `1` (subtle) to `5` (strongest) and defaults to `3`.
+
+Higher values make the shadow or stroke thicker. The text metrics do not change, so the page count stays close to the original. The setting is ignored when the style is **Real bold**.
+
+You can change the intensity in the same places as the bold style:
+
+- **Epub Metaguider GUI (Interface Action)**: Preferences → Advanced → Plugins → EBook Metaguider (intellireading) → Customize plugin → Bold intensity.
+- **Epub Metaguider post processor (FileType)**: Preferences → Advanced → Plugins → EPUB Metaguider - Post Processor (intellireading) → Customize plugin → Bold intensity.
+- **Epub Metaguider output format (Output Format)**: when converting to EPUB, open the "Epub Output (metaguided)" section and choose a Bold intensity.
+- **KoboTouch Metaguider (Device Interface)**: Configure device → Collections, covers && uploads → IntelliReading → Bold intensity.
+
 ## What is Calibre?
 **Cali**bre **i**s **a** **fr**ee **an**d **open-s**ource **e-b**ook **mana**ger. **I**t **i**s **us**ed **fo**r **catalo**ging, **conver**ting, **read**ing **an**d **sync**ing **e-bo**oks **wi**th **e-b**ook **rea**der **devi**ces. **I**t **i**s **prima**rily **a** **fr**ee **soft**ware **sui**te **devel**oped **b**y **use**rs **o**f **e-bo**oks **fo**r **use**rs **o**f **e-bo**oks.
 **Fo**r **mo**re **inform**ation, **vis**it **th**e [**Cal**ibre **webs**ite](https://calibre-ebook.com/).

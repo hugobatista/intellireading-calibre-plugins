@@ -9,7 +9,11 @@ __docformat__ = "markdown en"
 # pylint: disable=import-error
 from calibre.utils.config import JSONConfig
 
-from calibre_plugins.metaguidefiletype.metaguiding import DEFAULT_FIXATION
+from calibre_plugins.metaguidefiletype.metaguiding import (
+    DEFAULT_BOLD_INTENSITY,
+    DEFAULT_BOLD_STYLE,
+    DEFAULT_FIXATION,
+)
 
 prefs = JSONConfig("plugins/epubmg_filetype")
 
@@ -26,3 +30,5 @@ prefs.defaults["include_about_page"] = True
 
 # Metaguiding settings
 prefs.defaults["fixation"] = DEFAULT_FIXATION
+prefs.defaults["bold_style"] = DEFAULT_BOLD_STYLE
+prefs.defaults["bold_intensity"] = DEFAULT_BOLD_INTENSITY
