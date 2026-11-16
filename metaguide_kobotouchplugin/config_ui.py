@@ -37,7 +37,8 @@ _BOLD_STYLE_TOOLTIP = (
     "Kobo kepubs and other WebKit-based readers; EPUB files on Kobo may ignore them."
 )
 _PAGE_FIX_TOOLTIP = (
-    "EXPERIMENTAL. Before the device imports the book, pre-creates the Kobo database rows so the "
+    "EXPERIMENTAL. Back up your Kobo before enabling this option: the driver writes directly to the "
+    "Kobo database. Before the device imports the book, pre-creates the Kobo database rows so the "
     "Kobo uses IntelliReading's clean word counts. This avoids the inflated page count caused by "
     "inline bold tags, without reconnecting the device. Only applies to new KEPUB uploads on the "
     "main memory. Existing books, plain EPUB uploads, and books on a memory card are not modified. "
@@ -198,6 +199,16 @@ class PageCountOptions(DeviceOptionsGroupBox):
         value = device.get_pref("intellireading_enable_page_fix")
         self.enable_page_fix_checkbox.setChecked(False if value is None else bool(value))
         layout.addWidget(self.enable_page_fix_checkbox)
+
+        self.backup_label = QLabel(
+            _(  # type: ignore # noqa
+                "<b>Back up your Kobo before enabling this option.</b> The driver writes "
+                "directly to the Kobo database."
+            ),
+            self,
+        )
+        self.backup_label.setWordWrap(True)
+        layout.addWidget(self.backup_label)
 
         self.warning_label = QLabel(
             _(  # type: ignore # noqa

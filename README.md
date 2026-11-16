@@ -99,6 +99,8 @@ The **KoboTouch Metaguider** driver can pre-create the Kobo database structure f
 
 Enable **Experimental: correct Kobo page counts for new books** in the IntelliReading tab of the driver settings. It is disabled by default.
 
+> **Back up your Kobo before enabling this option.** The page-count fix writes directly to the Kobo database. Keep a backup so you can restore it if something goes wrong.
+
 - Only new `.kepub`/`.kepub.epub` uploads on the main memory are affected.
 - Plain EPUB uploads (when KEPUB conversion is disabled), books on a memory card, and books without a readable TOC are not modified; the driver logs why.
 - Books already on the device are not modified. To rebuild the page counts of an existing book, delete it from the Kobo and send it again with the option enabled.
