@@ -11,7 +11,10 @@ except ImportError:
     from PyQt5.Qt import QCheckBox, QComboBox, QHBoxLayout, QLabel, QVBoxLayout
 
 from calibre.devices.kobo.kobotouch_config import KOBOTOUCHConfig
-from calibre.gui2.device_drivers.tabbed_device_config import DeviceOptionsGroupBox
+from calibre.gui2.device_drivers.tabbed_device_config import (
+    DeviceConfigTab,
+    DeviceOptionsGroupBox,
+)
 
 from calibre_plugins.metaguidekobotouch.metaguiding import (
     BOLD_INTENSITIES,
@@ -33,15 +36,34 @@ _BOLD_STYLE_TOOLTIP = (
     "emphasis with CSS, so the page count stays close to the original. Visual modes are intended for "
     "Kobo kepubs and other WebKit-based readers; EPUB files on Kobo may ignore them."
 )
+_PAGE_FIX_TOOLTIP = (
+    "EXPERIMENTAL. Before the device imports the book, pre-creates the Kobo database rows so the "
+    "Kobo uses IntelliReading's clean word counts. This avoids the inflated page count caused by "
+    "inline bold tags, without reconnecting the device. Only applies to new KEPUB uploads on the "
+    "main memory. Existing books, plain EPUB uploads, and books on a memory card are not modified. "
+    "Default: off."
+)
 
 
-class IntelliReadingOptions(DeviceOptionsGroupBox):
-    """IntelliReading specific options for the Kobo driver."""
+class MetaguidingOptions(DeviceOptionsGroupBox):
+    """Metaguiding options for the Kobo driver."""
 
     def __init__(self, parent, device):
-        super().__init__(parent, device, _("IntelliReading"))  # type: ignore # noqa
+        super().__init__(parent, device, _("Metaguiding"))  # type: ignore # noqa
 
         layout = QVBoxLayout(self)
+
+        self.enable_metaguiding_checkbox = QCheckBox(_("Enable metaguiding"), self)  # type: ignore # noqa
+        self.enable_metaguiding_checkbox.setToolTip(
+            _(  # type: ignore # noqa
+                "When disabled, books are sent without IntelliReading metaguiding. The Kobo "
+                "driver may still convert EPUB files to KEPUB according to its own settings. "
+                "The experimental page-count fix is also disabled."
+            )
+        )
+        value = device.get_pref("intellireading_enable_metaguiding")
+        self.enable_metaguiding_checkbox.setChecked(True if value is None else bool(value))
+        layout.addWidget(self.enable_metaguiding_checkbox)
 
         self.include_about_page_checkbox = QCheckBox(_("Add IntelliReading about/donation page"), self)  # type: ignore # noqa
         self.include_about_page_checkbox.setToolTip(
@@ -55,7 +77,8 @@ class IntelliReadingOptions(DeviceOptionsGroupBox):
         layout.addWidget(self.include_about_page_checkbox)
 
         fixation_layout = QHBoxLayout()
-        fixation_layout.addWidget(QLabel(_("Fixation level:"), self))  # type: ignore # noqa
+        self.fixation_label = QLabel(_("Fixation level:"), self)  # type: ignore # noqa
+        fixation_layout.addWidget(self.fixation_label)
         self.fixation_combo = QComboBox(self)
         for level in FIXATION_LEVELS:
             self.fixation_combo.addItem(str(level), level)
@@ -76,7 +99,8 @@ class IntelliReadingOptions(DeviceOptionsGroupBox):
         layout.addLayout(fixation_layout)
 
         bold_style_layout = QHBoxLayout()
-        bold_style_layout.addWidget(QLabel(_("Bold style:"), self))  # type: ignore # noqa
+        self.bold_style_label = QLabel(_("Bold style:"), self)  # type: ignore # noqa
+        bold_style_layout.addWidget(self.bold_style_label)
         self.bold_style_combo = QComboBox(self)
         for style in BOLD_STYLES:
             self.bold_style_combo.addItem(_BOLD_STYLE_LABELS[style], style)
@@ -91,7 +115,8 @@ class IntelliReadingOptions(DeviceOptionsGroupBox):
         layout.addLayout(bold_style_layout)
 
         intensity_layout = QHBoxLayout()
-        intensity_layout.addWidget(QLabel(_("Bold intensity:"), self))  # type: ignore # noqa
+        self.bold_intensity_label = QLabel(_("Bold intensity:"), self)  # type: ignore # noqa
+        intensity_layout.addWidget(self.bold_intensity_label)
         self.bold_intensity_combo = QComboBox(self)
         for level in BOLD_INTENSITIES:
             self.bold_intensity_combo.addItem(str(level), level)
@@ -114,11 +139,33 @@ class IntelliReadingOptions(DeviceOptionsGroupBox):
         intensity_layout.addStretch()
         layout.addLayout(intensity_layout)
 
-        self.bold_style_combo.currentIndexChanged.connect(self._update_bold_intensity_enabled)
+        self.enable_metaguiding_checkbox.toggled.connect(self._update_metaguiding_enabled)
+        self.bold_style_combo.currentIndexChanged.connect(self._update_metaguiding_enabled)
+        self._update_metaguiding_enabled()
+
+    def _update_metaguiding_enabled(self, *_args: object) -> None:
+        enabled = self.enable_metaguiding_checkbox.isChecked()
+        for widget in (
+            self.include_about_page_checkbox,
+            self.fixation_label,
+            self.fixation_combo,
+            self.bold_style_label,
+            self.bold_style_combo,
+        ):
+            widget.setEnabled(enabled)
         self._update_bold_intensity_enabled()
 
     def _update_bold_intensity_enabled(self, *_args: object) -> None:
-        self.bold_intensity_combo.setEnabled(self.bold_style_combo.currentData() != "tag")
+        enabled = (
+            self.enable_metaguiding_checkbox.isChecked()
+            and self.bold_style_combo.currentData() != "tag"
+        )
+        self.bold_intensity_label.setEnabled(enabled)
+        self.bold_intensity_combo.setEnabled(enabled)
+
+    @property
+    def enable_metaguiding(self) -> bool:
+        return self.enable_metaguiding_checkbox.isChecked()
 
     @property
     def include_about_page(self) -> bool:
@@ -137,20 +184,83 @@ class IntelliReadingOptions(DeviceOptionsGroupBox):
         return int(self.bold_intensity_combo.currentData())
 
 
+class PageCountOptions(DeviceOptionsGroupBox):
+    """Experimental Kobo page-count correction options."""
+
+    def __init__(self, parent, device):
+        super().__init__(parent, device, _("Page count (experimental)"))  # type: ignore # noqa
+
+        layout = QVBoxLayout(self)
+        self.enable_page_fix_checkbox = QCheckBox(
+            _("Experimental: correct Kobo page counts for new books"), self  # type: ignore # noqa
+        )
+        self.enable_page_fix_checkbox.setToolTip(_PAGE_FIX_TOOLTIP)
+        value = device.get_pref("intellireading_enable_page_fix")
+        self.enable_page_fix_checkbox.setChecked(False if value is None else bool(value))
+        layout.addWidget(self.enable_page_fix_checkbox)
+
+        self.warning_label = QLabel(
+            _(  # type: ignore # noqa
+                "Experimental feature. Only new KEPUB uploads on the main memory are affected. "
+                "If a book is already on the device, delete it and send it again to rebuild its "
+                "page counts. Plain EPUB uploads and books on a memory card are not modified."
+            ),
+            self,
+        )
+        self.warning_label.setWordWrap(True)
+        layout.addWidget(self.warning_label)
+
+    @property
+    def enable_page_fix(self) -> bool:
+        return self.enable_page_fix_checkbox.isChecked()
+
+
+class IntelliReadingTab(DeviceConfigTab):
+    """Dedicated IntelliReading tab for the Kobo driver options."""
+
+    def __init__(self, parent, device):
+        super().__init__(parent)
+
+        layout = QVBoxLayout(self)
+        self.metaguiding_options = MetaguidingOptions(self, device)
+        self.page_count_options = PageCountOptions(self, device)
+        layout.addWidget(self.metaguiding_options)
+        layout.addWidget(self.page_count_options)
+        self.addDeviceWidget(self.metaguiding_options)
+        self.addDeviceWidget(self.page_count_options)
+        layout.addStretch(1)
+
+        self.metaguiding_options.enable_metaguiding_checkbox.toggled.connect(
+            self._update_page_fix_enabled
+        )
+        self._update_page_fix_enabled()
+
+    def _update_page_fix_enabled(self, *_args: object) -> None:
+        enabled = self.metaguiding_options.enable_metaguiding_checkbox.isChecked()
+        self.page_count_options.setEnabled(enabled)
+
+
 class IntelliReadingKoboTouchConfig(KOBOTOUCHConfig):
-    """Kobo driver configuration with IntelliReading options."""
+    """Kobo driver configuration with a dedicated IntelliReading tab."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.intellireading_options = IntelliReadingOptions(self, self.device)
-        self.tab1.l.insertWidget(self.tab1.l.count() - 1, self.intellireading_options)
-        self.tab1.addDeviceWidget(self.intellireading_options)
+        self.intellireading_tab = IntelliReadingTab(self, self.device)
+        self.addDeviceTab(self.intellireading_tab, _("IntelliReading"))  # type: ignore # noqa
 
     def commit(self):
         p = super().commit()
-        p["intellireading_include_about_page"] = self.intellireading_options.include_about_page
-        p["intellireading_fixation"] = self.intellireading_options.fixation
-        p["intellireading_bold_style"] = self.intellireading_options.bold_style
-        p["intellireading_bold_intensity"] = self.intellireading_options.bold_intensity
+        metaguiding = self.intellireading_tab.metaguiding_options
+        page_count = self.intellireading_tab.page_count_options
+        p["intellireading_enable_metaguiding"] = metaguiding.enable_metaguiding
+        p["intellireading_include_about_page"] = metaguiding.include_about_page
+        p["intellireading_fixation"] = metaguiding.fixation
+        p["intellireading_bold_style"] = metaguiding.bold_style
+        p["intellireading_bold_intensity"] = metaguiding.bold_intensity
+        p["intellireading_enable_page_fix"] = page_count.enable_page_fix
+        try:
+            del p["intellireading_fix_existing_wordcounts"]
+        except (KeyError, TypeError):
+            pass
         return p

@@ -24,6 +24,10 @@ This repo is part of the [Intellireading](https://go.hugobatista.com/intelliread
 
 **Metagu**iding **i**s **partic**ulary **use**ful **fo**r **peo**ple **wi**th **dysl**exia **o**r **ADH**D, **bu**t **i**t **ca**n **b**e **us**ed **b**y **any**one **wh**o **wan**ts **t**o **impr**ove **the**ir **read**ing **foc**us **an**d **spe**ed. **Fo**r **mo**re **inform**ation, **vis**it **th**e [**Intelli**reading **webs**ite.](https://go.hugobatista.com/intellireading)
 
+## Disable metaguiding
+
+The **KoboTouch Metaguider** driver has an **Enable metaguiding** option, enabled by default. When it is disabled, books are sent without IntelliReading metaguiding. The Kobo driver's own settings, including KEPUB conversion, still apply. The experimental page-count correction is controlled separately by **Experimental: correct Kobo page counts for new books**.
+
 ## IntelliReading about page
 
 By default, metaguided EPUBs include an IntelliReading about/donation page at the end. The page is added only when a book is metaguided for the first time; books that are already metaguided are copied unchanged.
@@ -86,6 +90,22 @@ You can change the intensity in the same places as the bold style:
 **Cali**bre **i**s **a** **fr**ee **an**d **open-s**ource **e-b**ook **mana**ger. **I**t **i**s **us**ed **fo**r **catalo**ging, **conver**ting, **read**ing **an**d **sync**ing **e-bo**oks **wi**th **e-b**ook **rea**der **devi**ces. **I**t **i**s **prima**rily **a** **fr**ee **soft**ware **sui**te **devel**oped **b**y **use**rs **o**f **e-bo**oks **fo**r **use**rs **o**f **e-bo**oks.
 **Fo**r **mo**re **inform**ation, **vis**it **th**e [**Cal**ibre **webs**ite](https://calibre-ebook.com/).
 
+
+## Kobo page count correction (experimental)
+
+On a Kobo, the total page count of a kepub is estimated from the word count of each chapter, not only from the rendered layout. The metaguiding markup can inflate that word count: a word such as `prefix` becomes `<b>pre</b>fix`, and the Kobo's word counter may count the two fragments as separate words. The per-chapter page count stays correct, but the total for the whole book can become too high.
+
+The **KoboTouch Metaguider** driver can pre-create the Kobo database structure for a new KEPUB during transfer, using clean word counts computed on the host with a Kobo-compatible algorithm: each Han character counts as one word, and the remaining scripts use word boundaries. Because the chapter rows, the table of contents and the `volume_shortcovers` spine exist before the Kobo imports the book, the Kobo uses these counts and the footer shows the correct total. No reconnect is needed.
+
+Enable **Experimental: correct Kobo page counts for new books** in the IntelliReading tab of the driver settings. It is disabled by default.
+
+- Only new `.kepub`/`.kepub.epub` uploads on the main memory are affected.
+- Plain EPUB uploads (when KEPUB conversion is disabled), books on a memory card, and books without a readable TOC are not modified; the driver logs why.
+- Books already on the device are not modified. To rebuild the page counts of an existing book, delete it from the Kobo and send it again with the option enabled.
+- When metaguiding is disabled, no page-count rows are created.
+- This feature is experimental and may change.
+
+If the option is disabled, books are sent normally; the Kobo may show an inflated total for metaguided books that use partial-word bold.
 
 ## Calibre Plugins available
 

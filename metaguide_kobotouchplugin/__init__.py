@@ -1,34 +1,10 @@
+from typing import Any, List, Optional
+from urllib.parse import unquote
+
 from calibre.devices.kobo.driver import KOBOTOUCH
-from typing import List, Optional, Tuple
 from calibre.ebooks.metadata.book.base import Metadata
-from calibre_plugins.metaguidekobotouch import common, metaguiding
-
-# Constants
-MSG_ALREADY_METAGUIDED = (
-    '"{name}" is already metaguided. '
-    "Sending pre-metaguided EPUBs to a Kobo device may cause slow performance "
-    "due to the kepubify process and the way it handles the bold tag.\n\n"
-    "Recommended Process:\n"
-    "1. Send the original non-metaguided EPUB to your Kobo\n"
-    "2. Let this driver handle the metaguiding during transfer\n\n"
-    "This ensures optimal performance on your device."
-)
-
-# Donate message for first-time users
-MSG_WELCOME = (
-    "WARNING! PLEASE READ CAREFULLY: "
-    "You have installed the 'KoboTouch Metaguide Driver' by IntelliReading.\n\n"
-    "If you do not know what metaguiding is, DO NOT USE this driver "
-    "and uninstall it immediately, as it is NOT required to send ebooks to your Kobo device. \n"
-    "This driver will modify ANY epub/kepub file you send to the device, "
-    "by adding additional markup to the text, like bold tags, eventually improving your reading experience, "
-    "your focus and reading speed. \n\n"
-    "🌐 For more information, visit https://go.hugobatista.com/gh/intellireading-calibre-plugins or "
-    "https://go.hugobatista.com/intellireading .\n\n"
-    "💙 Thank you for using IntelliReading!\n"
-    "If this plugin improves your reading experience, please consider supporting "
-    "its development through a donation: https://go.hugobatista.com/donate-intellireading ."
-)
+from calibre_plugins.metaguidekobotouch import common, metaguiding, page_fix
+from calibre_plugins.metaguidekobotouch.messages import MSG_ALREADY_METAGUIDED, MSG_WELCOME
 
 
 def metaguide_file(
@@ -79,6 +55,7 @@ class KoboTouchMetaguideDriver(KOBOTOUCH):
     @classmethod
     def _config(cls):
         c = super()._config()
+        c.add_opt("intellireading_enable_metaguiding", default=True)
         c.add_opt("intellireading_include_about_page", default=True)
         c.add_opt(
             "intellireading_fixation",
@@ -97,6 +74,7 @@ class KoboTouchMetaguideDriver(KOBOTOUCH):
             type=int,
             choices=metaguiding.BOLD_INTENSITIES,
         )
+        c.add_opt("intellireading_enable_page_fix", default=False)
         return c
 
     @classmethod
@@ -118,6 +96,15 @@ class KoboTouchMetaguideDriver(KOBOTOUCH):
     def initialize(self) -> None:
         common.log.debug(f"Initializing {self.name} plugin")
         super().initialize()
+
+    def _device_path_from_contentid(
+        self, content_id: str, mime_type: str, external_id: Optional[str]
+    ) -> Optional[str]:
+        try:
+            path = self.path_from_contentid(content_id, "6", mime_type, None, external_id)
+        except Exception:
+            return None
+        return unquote(path) if path else None
 
     user_feedback_after_callback = None
 
@@ -182,19 +169,27 @@ class KoboTouchMetaguideDriver(KOBOTOUCH):
 
         return output_path
 
-    def _log_and_show_message(self, message: str, duration: int = 5000) -> None:
+    def _log_and_show_message(
+        self, message: str, duration: int = 5000, log_level: str = "debug"
+    ) -> None:
         """
         Log a message and show it in the status bar.
 
         Args:
             message: The message to log and display
             duration: How long to show the message in milliseconds
+            log_level: The logger method to use, for example "info" or "debug"
         """
-        common.log.debug(message)
-        from calibre.gui2.ui import get_gui
+        log = getattr(common.log, log_level, common.log.debug)
+        log(message)
+        try:
+            from calibre.gui2.ui import get_gui
 
-        gui = get_gui()
-        gui.status_bar.show_message(f"{self.__class__.__name__}: {message}", duration)
+            gui = get_gui()
+            if gui is not None:
+                gui.status_bar.show_message(f"{self.__class__.__name__}: {message}", duration)
+        except Exception as e:  # pylint: disable=broad-except
+            common.log.debug(f"Could not show status message: {e}")
 
     def upload_books(
         self,
@@ -203,7 +198,7 @@ class KoboTouchMetaguideDriver(KOBOTOUCH):
         on_card: bool = False,
         end_session: bool = True,
         metadata: Optional[List[Metadata]] = None,
-    ) -> Tuple[List[str], List[str]]:
+    ) -> Any:
         """
         Upload books to the device, converting them to metaguided format if needed.
 
@@ -217,6 +212,19 @@ class KoboTouchMetaguideDriver(KOBOTOUCH):
         Returns:
             Tuple containing processed files and names
         """
+        enable_metaguiding = self.get_pref("intellireading_enable_metaguiding")
+        if enable_metaguiding is None:
+            enable_metaguiding = True
+        if not enable_metaguiding:
+            common.log.info("Metaguiding disabled; sending books unchanged")
+            return super().upload_books(
+                files=files,
+                names=names,
+                on_card=on_card,
+                end_session=end_session,
+                metadata=metadata,
+            )
+
         processed_files = []
         processed_names = []
         from calibre.gui2.ui import get_gui
@@ -317,10 +325,28 @@ class KoboTouchMetaguideDriver(KOBOTOUCH):
                 raise
 
         # Call the parent method with the processed files
-        return super().upload_books(
+        result = super().upload_books(
             files=processed_files,
             names=processed_names,
             on_card=on_card,
             end_session=end_session,
             metadata=metadata,
         )
+
+        page_fix_enabled = self.get_pref("intellireading_enable_page_fix")
+        if page_fix_enabled is None:
+            page_fix_enabled = False
+        if page_fix_enabled:
+            page_fix.insert_db_first_books(self, result, metadata, on_card)
+        else:
+            common.log.debug("Kobo page-count fix disabled; skipping database pre-creation")
+        return result
+
+    def delete_books(self, paths: List[str], end_session: bool = True) -> None:
+        try:
+            super().delete_books(paths, end_session=end_session)
+        finally:
+            try:
+                page_fix.cleanup_deleted_books(self, paths)
+            except Exception as e:  # pylint: disable=broad-except
+                common.log.error(f"Could not clean up Kobo page-count rows: {e}")
